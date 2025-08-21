@@ -43,6 +43,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [workers, setWorkers] = useState<User[]>([]);
 
   useEffect(() => {
+    // TODO: Fetch initial data from database instead of static file.
+  }, [])
+
+  useEffect(() => {
     if (user?.role === 'super_worker') {
         const myWorkers = users.filter(u => u.role === 'worker' && u.referredBy === user.id);
         setWorkers(myWorkers);
