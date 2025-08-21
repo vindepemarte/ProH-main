@@ -58,7 +58,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         <div><Label>Project Number</Label><p>{hw.projectNumber.join(', ')}</p></div>
                         <div><Label>Word Count</Label><p>{hw.wordCount}</p></div>
                         <div><Label>Deadline</Label><p>{new Date(hw.deadline).toLocaleString()}</p></div>
-                        {hw.price && <div><Label>Price</Label><p>£{hw.price.toFixed(2)}</p></div>}
+                        {hw.price && <div><Label>Price</Label><p>£{Number(hw.price).toFixed(2)}</p></div>}
                     </div>
                     <div>
                         <Label>Notes for Worker</Label>
@@ -128,7 +128,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         </div>
                     )}
                     {user.role === 'student' && (
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2">
                             {hw.status === 'completed' && <Button className="w-full gap-2"><FileDown/> Download Final Work</Button>}
                             <Button variant="outline" className="w-full gap-2"><PencilRuler /> Request Changes</Button>
                         </div>
