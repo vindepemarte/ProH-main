@@ -66,7 +66,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                     </div>
                     <div>
                         <Label>Files</Label>
-                        {hw.files.length > 0 ? (
+                        {hw.files && hw.files.length > 0 ? (
                             <div className="flex flex-col gap-2 mt-2">
                                 {hw.files.map((file, i) => (
                                     <Button key={i} variant="outline" className="justify-start gap-2">
