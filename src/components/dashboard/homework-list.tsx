@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { HomeworkStatus } from "@/lib/types";
+import { useEffect } from "react";
 
 const statusColors: Record<HomeworkStatus, string> = {
   payment_approval: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30",
@@ -20,11 +21,16 @@ const statusColors: Record<HomeworkStatus, string> = {
 };
 
 export default function HomeworkList() {
-    const { user, getHomeworksForUser, setSelectedHomework, setIsHomeworkModalOpen } = useAppContext();
+    const { user, homeworks, getHomeworksForUser, setSelectedHomework, setIsHomeworkModalOpen } = useAppContext();
+
+    useEffect(() => {
+        if (user) {
+            getHomeworksForUser(user);
+        }
+    }, [user, getHomeworksForUser]);
+
 
     if (!user) return null;
-
-    const homeworks = getHomeworksForUser(user);
 
     const openHomeworkModal = (homeworkId: string) => {
         const homework = homeworks.find(h => h.id === homeworkId);

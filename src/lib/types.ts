@@ -14,7 +14,7 @@ export type ReferenceCodeType = 'STUDENT' | 'AGENT' | 'WORKER';
 
 export interface ReferenceCode {
   code: string;
-  ownerId: string;
+  owner_id: string;
   type: ReferenceCodeType;
   role: UserRole;
 }
@@ -30,6 +30,16 @@ export type HomeworkStatus =
   | 'refund'
   | 'completed';
 
+export type ProjectNumber = 'A1' | 'A2' | 'A3' | 'A4' | 'Full Project';
+  
+export interface HomeworkFile {
+    id: string;
+    homework_id: string;
+    file_name: string;
+    file_url: string;
+    uploaded_at: Date;
+}
+
 export interface Homework {
   id: string;
   studentId: string;
@@ -37,7 +47,7 @@ export interface Homework {
   workerId?: string;
   status: HomeworkStatus;
   moduleName: string;
-  projectNumber: ('A1' | 'A2' | 'A3' | 'A4' | 'Full Project')[];
+  projectNumber: ProjectNumber[];
   wordCount: number;
   deadline: Date;
   notes: string;

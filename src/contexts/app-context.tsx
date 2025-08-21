@@ -2,14 +2,14 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import type { User, Homework, HomeworkStatus, UserRole } from '@/lib/types';
-import { users as initialUsers, homeworks as initialHomeworks, referenceCodes } from '@/lib/data';
 import { useToast } from "@/hooks/use-toast";
+import { fetchUsers, authenticateUser, createUser, fetchHomeworks, fetchHomeworksForUser, modifyHomework, fetchWorkersForSuperWorker } from '@/lib/actions';
 
 interface AppContextType {
   user: User | null;
-  login: (email: string, pass: string) => boolean;
+  login: (email: string, pass: string) => Promise<boolean>;
   logout: () => void;
-  register: (name: string, email: string, pass: string, refCode: string) => boolean;
+  register: (name: string, email: string, pass: string, refCode: string) => Promise<boolean>;
   
   authModalOpen: boolean;
   setAuthModalOpen: (open: boolean) => void;
@@ -17,8 +17,8 @@ interface AppContextType {
   setProfileModalOpen: (open: boolean) => void;
   
   homeworks: Homework[];
-  getHomeworksForUser: (user: User) => Homework[];
-  updateHomework: (id: string, updates: Partial<Homework>) => void;
+  getHomeworksForUser: (user: User) => void;
+  updateHomework: (id: string, updates: Partial<Homework>) => Promise<void>;
   
   selectedHomework: Homework | null;
   setSelectedHomework: (homework: Homework | null) => void;
@@ -33,8 +33,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>(initialUsers);
-  const [homeworks, setHomeworks] = useState<Homework[]>(initialHomeworks);
+  const [homeworks, setHomeworks] = useState<Homework[]>([]);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -43,28 +42,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [workers, setWorkers] = useState<User[]>([]);
 
   useEffect(() => {
-    // TODO: Fetch initial data from database instead of static file.
-  }, [])
-
-  useEffect(() => {
-    if (user?.role === 'super_worker') {
-        const myWorkers = users.filter(u => u.role === 'worker' && u.referredBy === user.id);
-        setWorkers(myWorkers);
+    if (user) {
+      getHomeworksForUser(user);
+      if (user.role === 'super_worker') {
+        fetchWorkersForSuperWorker(user.id).then(setWorkers);
+      }
+    } else {
+      setHomeworks([]);
+      setWorkers([]);
     }
-  }, [user, users]);
+  }, [user]);
 
-  const login = (email: string, pass: string): boolean => {
-    const foundUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    const hash = (pwd: string) => `hashed_${pwd}`;
-
-    if (foundUser && foundUser.password_hash === hash(pass)) {
-      setUser(foundUser);
-      setAuthModalOpen(false);
-      toast({ title: "Login Successful", description: `Welcome back, ${foundUser.name}!` });
-      return true;
+  const login = async (email: string, pass: string): Promise<boolean> => {
+    try {
+      const foundUser = await authenticateUser(email, pass);
+      if (foundUser) {
+        setUser(foundUser);
+        setAuthModalOpen(false);
+        toast({ title: "Login Successful", description: `Welcome back, ${foundUser.name}!` });
+        return true;
+      } else {
+        toast({ variant: 'destructive', title: "Login Failed", description: "Invalid email or password." });
+        return false;
+      }
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Login Error", description: "An error occurred during login." });
+      return false;
     }
-    toast({ variant: 'destructive', title: "Login Failed", description: "Invalid email or password." });
-    return false;
   };
 
   const logout = () => {
@@ -73,56 +78,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
   
-  const register = (name: string, email: string, pass: string, refCode: string): boolean => {
-    const code = referenceCodes.find(c => c.code === refCode.toUpperCase());
-    if (!code) {
-        toast({ variant: 'destructive', title: "Registration Failed", description: "Invalid reference code." });
+  const register = async (name: string, email: string, pass: string, refCode: string): Promise<boolean> => {
+     try {
+        const newUser = await createUser(name, email, pass, refCode);
+        if (newUser) {
+            setUser(newUser);
+            setAuthModalOpen(false);
+            toast({ title: "Registration Successful", description: `Welcome, ${name}!` });
+            return true;
+        } else {
+            // The createUser function will throw an error with a specific message.
+            return false;
+        }
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: "Registration Failed", description: error.message });
         return false;
-    }
-
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-        toast({ variant: 'destructive', title: "Registration Failed", description: "Email already in use." });
-        return false;
-    }
-    
-    const newUser: User = {
-        id: `user_${Date.now()}`,
-        name,
-        email,
-        password_hash: `hashed_${pass}`,
-        role: code.role,
-        referredBy: code.ownerId,
-        referenceCode: null, // This would be assigned later for agent/super_worker
-    };
-
-    setUsers(prev => [...prev, newUser]);
-    setUser(newUser);
-    setAuthModalOpen(false);
-    toast({ title: "Registration Successful", description: `Welcome, ${name}!` });
-
-    return true;
-  };
-
-  const getHomeworksForUser = (currentUser: User): Homework[] => {
-    switch(currentUser.role) {
-        case 'super_agent':
-            return homeworks;
-        case 'agent':
-            return homeworks.filter(h => h.agentId === currentUser.id);
-        case 'student':
-            return homeworks.filter(h => h.studentId === currentUser.id);
-        case 'super_worker':
-            return homeworks.filter(h => ['in_progress', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change'].includes(h.status));
-        case 'worker':
-            return homeworks.filter(h => h.workerId === currentUser.id);
-        default:
-            return [];
     }
   };
 
-  const updateHomework = (id: string, updates: Partial<Homework>) => {
-    setHomeworks(prev => prev.map(hw => hw.id === id ? {...hw, ...updates} : hw));
-    toast({ title: "Homework Updated", description: `Homework #${id} status changed.` });
+  const getHomeworksForUser = async (currentUser: User) => {
+    try {
+        const userHomeworks = await fetchHomeworksForUser(currentUser);
+        setHomeworks(userHomeworks);
+    } catch (error) {
+        console.error(error);
+        toast({ variant: 'destructive', title: "Error", description: "Could not fetch homeworks." });
+    }
+  };
+
+  const updateHomework = async (id: string, updates: Partial<Homework>) => {
+    try {
+        await modifyHomework(id, updates);
+        if (user) {
+            getHomeworksForUser(user); // Refresh homeworks list
+        }
+        if (selectedHomework && selectedHomework.id === id) {
+            setSelectedHomework({ ...selectedHomework, ...updates });
+        }
+        toast({ title: "Homework Updated", description: `Homework #${id.split('_')[1]} has been updated.` });
+    } catch (error) {
+        console.error(error);
+        toast({ variant: 'destructive', title: "Error", description: "Could not update homework." });
+    }
   }
 
   const value = {
@@ -135,7 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     profileModalOpen,
     setProfileModalOpen,
     homeworks,
-    getHomeworksForUser,
+    getHomeworksForUser: () => user && getHomeworksForUser(user),
     updateHomework,
     selectedHomework,
     setSelectedHomework,
