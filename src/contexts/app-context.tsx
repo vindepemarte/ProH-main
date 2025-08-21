@@ -80,26 +80,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toast({ variant: 'destructive', title: "Registration Failed", description: "Email already in use." });
         return false;
     }
-
-    let role: UserRole;
-    switch(code.type) {
-        case 'AGENT': role = 'agent'; break;
-        case 'WORKER': role = 'worker'; break;
-        case 'STUDENT': role = 'student'; break;
-        default: return false;
-    }
     
-    // Special GODZ code case
-    if (code.code === 'GODZ') {
-        role = 'super_agent';
-    }
-
     const newUser: User = {
         id: `user_${Date.now()}`,
         name,
         email,
         password_hash: `hashed_${pass}`,
-        role,
+        role: code.role,
         referredBy: code.ownerId,
         referenceCode: null, // This would be assigned later for agent/super_worker
     };

@@ -9,7 +9,7 @@ import { Badge } from "../ui/badge"
 import { cn } from "@/lib/utils"
 import { HomeworkStatus } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
-import { FileDown, Paperclip } from "lucide-react"
+import { FileDown, Paperclip, PencilRuler } from "lucide-react"
 import { ScrollArea } from "../ui/scroll-area"
 
 const statusColors: Record<HomeworkStatus, string> = {
@@ -127,11 +127,14 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                             <Button variant="outline">Request Deadline</Button>
                         </div>
                     )}
-                    {user.role === 'student' && hw.status === 'completed' && (
-                        <Button className="w-full gap-2"><FileDown/> Download Final Work</Button>
+                    {user.role === 'student' && (
+                        <div className="flex gap-2">
+                            {hw.status === 'completed' && <Button className="w-full gap-2"><FileDown/> Download Final Work</Button>}
+                            <Button variant="outline" className="w-full gap-2"><PencilRuler /> Request Changes</Button>
+                        </div>
                     )}
                     {(user.role === 'student' && ['word_count_change', 'deadline_change'].includes(hw.status)) && (
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 mt-2">
                             <Button className="w-full" variant="destructive">Decline</Button>
                             <Button className="w-full">Approve</Button>
                         </div>

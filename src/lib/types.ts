@@ -16,6 +16,7 @@ export interface ReferenceCode {
   code: string;
   ownerId: string;
   type: ReferenceCodeType;
+  role: UserRole;
 }
 
 export type HomeworkStatus =

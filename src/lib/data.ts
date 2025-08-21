@@ -13,12 +13,12 @@ export const users: User[] = [
 ];
 
 export const referenceCodes: ReferenceCode[] = [
-  { code: 'GODZ', ownerId: 'god_user', type: 'AGENT' }, // Special code for initial super agent
-  { code: 'SUPC', ownerId: 'user_superagent', type: 'STUDENT' },
-  { code: 'SUPA', ownerId: 'user_superagent', type: 'AGENT' },
-  { code: 'SUPW', ownerId: 'user_superagent', type: 'WORKER' },
-  { code: 'AGNT', ownerId: 'user_agent', type: 'STUDENT' },
-  { code: 'WORK', ownerId: 'user_superworker', type: 'WORKER' },
+  { code: 'GODZ', ownerId: 'god_user', type: 'AGENT', role: 'super_agent' }, // Special code for initial super agent
+  { code: 'SUPC', ownerId: 'user_superagent', type: 'STUDENT', role: 'student' },
+  { code: 'SUPA', ownerId: 'user_superagent', type: 'AGENT', role: 'agent' },
+  { code: 'SUPW', ownerId: 'user_superagent', type: 'WORKER', role: 'super_worker' },
+  { code: 'AGNT', ownerId: 'user_agent', type: 'STUDENT', role: 'student' },
+  { code: 'WORK', ownerId: 'user_superworker', type: 'WORKER', role: 'worker' },
 ];
 
 export const homeworks: Homework[] = [
@@ -63,5 +63,20 @@ export const homeworks: Homework[] = [
     files: [{ name: 'final_submission.pdf', url: '#' }],
     price: 500,
     earnings: { total: 500, super_worker: 62.50, profit: 437.50 }
+  },
+  {
+    id: 'hw_1237',
+    studentId: 'user_client_from_agent',
+    agentId: 'user_agent',
+    status: 'completed',
+    workerId: 'user_worker',
+    moduleName: 'Data Structures and Algorithms',
+    projectNumber: ['A4'],
+    wordCount: 3000,
+    deadline: new Date('2025-07-20T23:59:59'),
+    notes: 'Implementation of a B-Tree.',
+    files: [{ name: 'data_structures_final.zip', url: '#' }],
+    price: 320,
+    earnings: { total: 320, agent: 64, super_worker: 37.5, profit: 218.5 }
   },
 ];
