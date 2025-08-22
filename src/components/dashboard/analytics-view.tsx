@@ -79,10 +79,28 @@ export default function AnalyticsView() {
     const chartData = useMemo(() => {
         if (!analyticsData) return [];
         
-        const dataMap1 = new Map(analyticsData.metric1.map(item => [item.month.substring(0, 3), item.value]));
-        const dataMap2 = new Map(analyticsData.metric2.map(item => [item.month.substring(0, 3), item.value]));
+        const dataMap1 = new Map(analyticsData.metric1.map(item => [item.month, item.value]));
+        const dataMap2 = new Map(analyticsData.metric2.map(item => [item.month, item.value]));
         
-        return allMonths.map(month => ({
+        // Use a set of all unique months from both metrics to ensure all data is shown
+        const allDataMonths = [...new Set([...analyticsData.metric1.map(i => i.month), ...analyticsData.metric2.map(i => i.month)])];
+        const relevantMonths = allMonths.filter(m => allDataMonths.includes(m));
+
+        // If there are no historical months, but there is data (e.g., one new homework), show the current month
+        if (relevantMonths.length === 0 && allDataMonths.length > 0) {
+            relevantMonths.push(allDataMonths[0]);
+        }
+        
+        // If there's still nothing, fall back to showing the last few months for an empty state
+        if (relevantMonths.length === 0) {
+            const currentMonthIndex = new Date().getMonth();
+            return allMonths.slice(Math.max(0, currentMonthIndex - 5), currentMonthIndex + 1).map(month => ({
+                 name: month, metric1: 0, metric2: 0
+            }));
+        }
+
+
+        return relevantMonths.map(month => ({
             name: month,
             metric1: dataMap1.get(month) || 0,
             metric2: dataMap2.get(month) || 0,
@@ -122,6 +140,8 @@ export default function AnalyticsView() {
         metric1: 'metric1',
         metric2: 'metric2'
     }
+
+    const noData = chartData.every(d => d.metric1 === 0 && d.metric2 === 0);
 
     return (
         <div className="p-4 space-y-4">
@@ -170,7 +190,7 @@ export default function AnalyticsView() {
             
             {user.role === 'super_agent' && <SuperAgentKPIs />}
 
-            {chartData.length === 0 ? (
+            {noData ? (
                 <Card>
                     <CardContent className="pt-6">
                         <p className="text-muted-foreground text-center">No analytics data available for the selected period.</p>
@@ -200,7 +220,7 @@ export default function AnalyticsView() {
                                             backgroundColor: 'hsl(var(--background))',
                                             borderColor: 'hsl(var(--border))'
                                         }}
-                                        formatter={(value) => isStudent ? `£${Number(value).toFixed(2)}` : `£${Number(value).toFixed(2)}`}
+                                        formatter={(value) => `£${Number(value).toFixed(2)}`}
                                     />
                                     <Area type="monotone" dataKey={dataKeys.metric1} name={titles.metric1} stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorMetric1)" />
                                 </AreaChart>

@@ -368,9 +368,9 @@ export async function createHomework(
 ): Promise<{homework: Homework, message: string}> {
     const client = await pool.connect();
     const homeworkId = String(Math.floor(10000 + Math.random() * 90000));
-    let createdHomework: Homework;
-    let message: string;
-    let transactionCommitted = false;
+    let createdHomework: Homework | null = null;
+    let message: string = '';
+    let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
 
     try {
         await client.query('BEGIN');
@@ -425,30 +425,28 @@ export async function createHomework(
         message = `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${createdHomework.id} as the reference for your payment.`;
 
         await client.query('COMMIT');
-        transactionCommitted = true;
+        
+        const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+        if (superAgentRes.rows.length > 0) {
+            notificationDetails = {
+                userId: superAgentRes.rows[0].id,
+                message: `New homework #${homeworkId} from ${student.name} requires payment approval.`,
+                homeworkId: homeworkId
+            };
+        }
 
     } catch(e) {
-        if (!transactionCommitted) {
-            await client.query('ROLLBACK');
-        }
+        await client.query('ROLLBACK');
         throw e;
     } finally {
         client.release();
     }
     
-    if (transactionCommitted) {
-        const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
-        if (superAgentRes.rows.length > 0) {
-            const notificationDetails = {
-                userId: superAgentRes.rows[0].id,
-                message: `New homework #${homeworkId} from ${student.name} requires payment approval.`,
-                homeworkId: homeworkId
-            };
-            try {
-                await createNotification(notificationDetails);
-            } catch (notificationError) {
-                console.error("Failed to create notification after homework creation:", notificationError);
-            }
+    if (notificationDetails) {
+        try {
+            await createNotification(notificationDetails);
+        } catch (notificationError) {
+            console.error("Failed to create notification after homework creation:", notificationError);
         }
     }
 
@@ -503,7 +501,7 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
             const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             return rows.map(r => ({
                 month: monthNames[new Date(r.month).getMonth()],
-                value: parseFloat(r.value)
+                value: parseFloat(r.value) || 0
             }));
         }
 
@@ -616,11 +614,12 @@ export async function fetchNotificationsForUser(userId: string): Promise<Notific
         let query = "SELECT * FROM notifications WHERE user_id = $1";
         const params: string[] = [userId];
 
-        if (userRole === 'super_agent' || userRole === 'super_worker') {
-            query += ` OR user_id = $2`;
-            params.push(userRole);
+        if (userRole === 'super_agent') {
+            query += ` OR user_id = 'super_agent'`;
+        } else if (userRole === 'super_worker') {
+            query += ` OR user_id = 'super_worker'`;
         }
-
+        
         query += " ORDER BY created_at DESC";
 
         const res = await client.query(query, params);
@@ -638,7 +637,11 @@ export async function createNotification({ userId, message, homeworkId }: { user
             'INSERT INTO notifications (user_id, message, homework_id) VALUES ($1, $2, $3)',
             [userId, message, homeworkId]
         );
-    } finally {
+    } catch (error) {
+        console.error('Failed to create notification:', { userId, message, homeworkId, error });
+        throw error;
+    }
+    finally {
         client.release();
     }
 }
