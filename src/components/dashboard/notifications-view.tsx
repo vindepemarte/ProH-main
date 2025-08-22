@@ -9,7 +9,7 @@ import { Button } from "../ui/button"
 import { Label } from "../ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { UserRole } from "@/lib/types"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Input } from "../ui/input"
 
 
@@ -18,13 +18,22 @@ function BroadcastForm() {
     const [message, setMessage] = useState('');
     const [targetType, setTargetType] = useState<'role' | 'user'>('role');
     const [selectedRole, setSelectedRole] = useState<UserRole>('student');
-    const [selectedUser, setSelectedUser] = useState('');
+    const [selectedUserId, setSelectedUserId] = useState('');
+    const [searchTerm, setSearchTerm] = useState("");
+
+    const filteredUsers = useMemo(() => {
+        if (!searchTerm) return allUsers;
+        return allUsers.filter(u => 
+            u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            u.email.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [allUsers, searchTerm]);
 
     if (user?.role !== 'super_agent') return null;
 
     const handleSend = () => {
         if (!message) return;
-        const targetUser = targetType === 'user' ? selectedUser : undefined;
+        const targetUser = targetType === 'user' ? selectedUserId : undefined;
         const targetRole = targetType === 'role' ? selectedRole : undefined;
         handleBroadcastNotification(message, targetRole, targetUser);
         setMessage('');
@@ -74,20 +83,29 @@ function BroadcastForm() {
                     ) : (
                          <div className="flex-grow space-y-2">
                             <Label>User</Label>
-                            <Select value={selectedUser} onValueChange={setSelectedUser}>
+                            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select a user..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {allUsers.map(u => (
+                                     <div className="p-2">
+                                        <Input
+                                        placeholder="Search users..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        />
+                                    </div>
+                                    <ScrollArea className="h-48">
+                                    {filteredUsers.map(u => (
                                         <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>
                                     ))}
+                                    </ScrollArea>
                                 </SelectContent>
                             </Select>
                         </div>
                     )}
                 </div>
-                 <Button onClick={handleSend} disabled={!message || (targetType === 'user' && !selectedUser)}>
+                 <Button onClick={handleSend} disabled={!message || (targetType === 'user' && !selectedUserId)}>
                     <Send className="mr-2"/> Send Notification
                 </Button>
             </CardContent>
@@ -111,8 +129,8 @@ export default function NotificationsView() {
                         <div className="space-y-4">
                             {notifications.length > 0 ? notifications.map(n => (
                                 <div key={n.id} className="flex items-start gap-4">
-                                    <div className="w-2 h-2 mt-2 rounded-full bg-accent" />
-                                    <div>
+                                     {!n.is_read && <div className="w-2 h-2 mt-2 rounded-full bg-accent" />}
+                                     <div className={n.is_read ? 'text-muted-foreground' : ''}>
                                         <p className="font-medium">{n.message}</p>
                                         <p className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString()}</p>
                                     </div>

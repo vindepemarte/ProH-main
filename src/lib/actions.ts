@@ -77,10 +77,12 @@ export async function createUser(name: string, email: string, pass: string, refC
             [newUserId, newUser.name, newUser.email, newUser.password_hash, newUser.role, newUser.referredBy]
         );
         
-        await createNotification({
-            userId: code.owner_id, // Notify the person who owns the code
-            message: `A new ${newUser.role}, ${newUser.name}, has registered using your reference code.`
-        });
+        if (code.owner_id) {
+            await createNotification({
+                userId: code.owner_id, // Notify the person who owns the code
+                message: `A new ${newUser.role}, ${newUser.name}, has registered using your reference code.`
+            });
+        }
         
         await client.query('COMMIT');
         const { password_hash, ...userWithoutPassword } = insertRes.rows[0];
@@ -97,7 +99,7 @@ export async function createUser(name: string, email: string, pass: string, refC
 export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
     const client = await pool.connect();
     let query = 'SELECT h.* FROM homeworks h';
-    const params: (string | homework_status[])[] = [];
+    const params: (string | HomeworkStatus[])[] = [];
     
     switch(user.role) {
         case 'super_agent':
@@ -230,9 +232,21 @@ export async function fetchAllReferenceCodes(): Promise<ReferenceCode[]> {
 export async function updateReferenceCode(oldCode: string, newCode: string): Promise<ReferenceCode> {
     const client = await pool.connect();
     try {
+        await client.query('BEGIN');
+        // Check if the new code already exists
+        const existingCodeRes = await client.query('SELECT * FROM reference_codes WHERE code = $1', [newCode.toUpperCase()]);
+        if (existingCodeRes.rows.length > 0) {
+            throw new Error(`Reference code "${newCode.toUpperCase()}" already exists.`);
+        }
+        
         const res = await client.query("UPDATE reference_codes SET code = $1 WHERE code = $2 RETURNING *", [newCode.toUpperCase(), oldCode]);
-        if(res.rows.length === 0) throw new Error("Code not found");
+        if(res.rows.length === 0) throw new Error("Original code not found");
+
+        await client.query('COMMIT');
         return res.rows[0];
+    } catch(e) {
+        await client.query('ROLLBACK');
+        throw e;
     } finally {
         client.release();
     }
@@ -256,26 +270,7 @@ export async function createHomework(
     const pricingConfig = await getPricingConfig();
     const studentDetails = (await client.query('SELECT * FROM users WHERE id = $1', [student.id])).rows[0];
     const agent = studentDetails.referred_by ? (await client.query('SELECT * FROM users WHERE id = $1', [studentDetails.referred_by])).rows[0] : null;
-
-    // Calculate base price
-    const wordTiers = pricingConfig.wordTiers;
-    const closestWordTier = Object.keys(wordTiers).map(Number).sort((a, b) => a - b).find(tier => tier >= data.wordCount) || Math.max(...Object.keys(wordTiers).map(Number));
-    let basePrice = wordTiers[closestWordTier];
-    if (data.wordCount > closestWordTier) { // Extrapolate for higher word counts if needed
-        const highestTier = Math.max(...Object.keys(wordTiers).map(Number));
-        const pricePerWord = wordTiers[highestTier] / highestTier;
-        basePrice = pricePerWord * data.wordCount;
-    }
-
-
-    // Calculate deadline charge
-    const daysUntilDeadline = differenceInDays(data.deadline, new Date());
-    let deadlineCharge = 0;
-    if (daysUntilDeadline <= 1) deadlineCharge = pricingConfig.deadlineTiers[1] || 0;
-    else if (daysUntilDeadline <= 3) deadlineCharge = pricingConfig.deadlineTiers[3] || 0;
-    else if (daysUntilDeadline <= 7) deadlineCharge = pricingConfig.deadlineTiers[7] || 0;
-
-    const finalPrice = basePrice + deadlineCharge;
+    const finalPrice = await getCalculatedPrice(data.wordCount, data.deadline);
 
     // Calculate earnings
     const agentFeePer500 = pricingConfig.fees.agent;
@@ -310,7 +305,7 @@ export async function createHomework(
 
         if (data.files && data.files.length > 0) {
             for (const file of data.files) {
-                await client.query(
+                 await client.query(
                     'INSERT INTO homework_files (homework_id, file_name, file_url) VALUES ($1, $2, $3)',
                     [homeworkId, file.name, file.url || '']
                 );
@@ -341,7 +336,7 @@ export async function createHomework(
         
         return {
             homework: createdHomework,
-            message: `Your homework has been submitted successfully. The reference ID is ${homeworkId}. Please use this ID as the reference for your payment.`
+            message: `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${createdHomework.id.split('_')[1]} as the reference for your payment.`
         };
     } catch(e) {
         await client.query('ROLLBACK');
@@ -462,7 +457,7 @@ export async function fetchNotificationsForUser(userId: string): Promise<Notific
         const userRole = userRes.rows[0].role;
         
         const res = await client.query(
-            "SELECT * FROM notifications WHERE (user_id = $1 OR user_id = $2 OR user_id = 'all') AND is_read = false ORDER BY created_at DESC",
+            "SELECT * FROM notifications WHERE user_id = $1 OR ($2 = 'super_agent' AND user_id = 'super_agent') OR ($2 = 'super_worker' AND user_id = 'super_worker') ORDER BY created_at DESC",
             [userId, userRole]
         );
         return res.rows;
@@ -470,6 +465,7 @@ export async function fetchNotificationsForUser(userId: string): Promise<Notific
         client.release();
     }
 }
+
 
 export async function createNotification({ userId, message, homeworkId }: { userId: string; message: string; homeworkId?: string }): Promise<void> {
     const client = await pool.connect();
@@ -484,11 +480,26 @@ export async function createNotification({ userId, message, homeworkId }: { user
 }
 
 export async function broadcastNotification({ targetRole, targetUser, message }: { targetRole?: UserRole, targetUser?: string, message: string }): Promise<void> {
-    if (!targetRole && !targetUser) {
-        throw new Error("Either a target role or a target user must be specified.");
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        if (targetUser) {
+            await createNotification({ userId: targetUser, message });
+        } else if (targetRole) {
+            const usersRes = await client.query('SELECT id FROM users WHERE role = $1', [targetRole]);
+            for (const user of usersRes.rows) {
+                await createNotification({ userId: user.id, message });
+            }
+        } else {
+             throw new Error("Either a target role or a target user must be specified.");
+        }
+        await client.query('COMMIT');
+    } catch(e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
     }
-    const target = targetUser || targetRole;
-    await createNotification({ userId: target!, message });
 }
 
 export async function updateUserRole(userId: string, newRole: UserRole): Promise<void> {
@@ -496,6 +507,15 @@ export async function updateUserRole(userId: string, newRole: UserRole): Promise
     try {
         await client.query("UPDATE users SET role = $1 WHERE id = $2", [newRole, userId]);
         await createNotification({ userId, message: `An administrator has changed your role to ${newRole.replace(/_/g, ' ')}.` });
+    } finally {
+        client.release();
+    }
+}
+
+export async function markNotificationsAsRead(userId: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query("UPDATE notifications SET is_read = true WHERE user_id = $1", [userId]);
     } finally {
         client.release();
     }

@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
@@ -19,7 +20,8 @@ import {
   getCalculatedPrice,
   fetchNotificationsForUser,
   broadcastNotification,
-  updateUserRole
+  updateUserRole,
+  markNotificationsAsRead
 } from '@/lib/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
@@ -68,6 +70,8 @@ interface AppContextType {
   
   notifications: Notification[];
   handleBroadcastNotification: (message: string, targetRole?: UserRole, targetUser?: string) => Promise<void>;
+  handleMarkNotificationsAsRead: () => void;
+  unreadNotificationCount: number;
 
   handleUpdateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
 }
@@ -80,6 +84,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [homeworks, setHomeworks] = useState<Homework[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -141,11 +146,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const data = await fetchNotificationsForUser(user.id);
       setNotifications(data);
+      setUnreadNotificationCount(data.filter(n => !n.is_read).length);
     } catch (error) {
       console.error(error);
       toast({ variant: 'destructive', title: "Error", description: "Could not fetch notifications." });
     }
   }, [user, toast]);
+  
+  const handleMarkNotificationsAsRead = useCallback(async () => {
+    if (!user) return;
+    try {
+      await markNotificationsAsRead(user.id);
+      // Optimistically update the UI
+      setUnreadNotificationCount(0);
+      setNotifications(notifications.map(n => ({ ...n, is_read: true })));
+      // Re-fetch for consistency
+      await fetchUserNotifications();
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: "Could not mark notifications as read." });
+    }
+  }, [user, toast, notifications, fetchUserNotifications]);
 
 
   const fetchPricingConfig = useCallback(async () => {
@@ -191,12 +212,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  useEffect(() => {
-    if (user) {
+  const fetchAllData = useCallback(() => {
       getHomeworksForUser();
       fetchAnalytics();
-      fetchPricingConfig();
       fetchUserNotifications();
+  }, [getHomeworksForUser, fetchAnalytics, fetchUserNotifications]);
+
+  useEffect(() => {
+    if (user) {
+      fetchAllData(); // Fetch initial data
+      fetchPricingConfig();
+      
       if (user.role === 'super_worker') {
         fetchWorkersForSuperWorker(user.id).then(setWorkers);
       }
@@ -204,7 +230,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fetchAllCodes();
         fetchUsers().then(setAllUsers);
       }
+      
+      // Set up polling
+      const intervalId = setInterval(fetchAllData, 30000); // Poll every 30 seconds
+      
+      return () => clearInterval(intervalId); // Cleanup on logout or unmount
     } else {
+      // Clear all data on logout
       setHomeworks([]);
       setWorkers([]);
       setReferenceCodes([]);
@@ -212,8 +244,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAnalyticsData(null);
       setPricingConfig(null);
       setNotifications([]);
+      setUnreadNotificationCount(0);
     }
-  }, [user, getHomeworksForUser, fetchAllCodes, fetchAnalytics, fetchPricingConfig, fetchUserNotifications]);
+  }, [user, fetchAllData, fetchAllCodes, fetchPricingConfig]);
+
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     try {
@@ -335,6 +369,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     calculatePrice,
     notifications,
     handleBroadcastNotification,
+    handleMarkNotificationsAsRead,
+    unreadNotificationCount,
     handleUpdateUserRole,
   };
 
@@ -365,3 +401,5 @@ export function useAppContext() {
   }
   return context;
 }
+
+    
