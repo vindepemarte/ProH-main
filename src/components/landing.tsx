@@ -30,10 +30,6 @@ export default function Landing() {
           className="mt-8 animate-bounce" 
           size="lg"
           onClick={() => setAuthModalOpen(true)}
-          style={{
-            backgroundColor: 'hsl(var(--primary))',
-            color: 'hsl(var(--primary-foreground))'
-          }}
           >
           Get Started
         </Button>

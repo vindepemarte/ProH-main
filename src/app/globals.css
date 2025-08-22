@@ -4,25 +4,25 @@
 
 @layer base {
   :root {
-    --background: 48 96% 94%;
-    --foreground: 358 65% 25%;
-    --card: 45 85% 98%;
+    --background: 48 96% 94%; /* Light Yellow */
+    --foreground: 358 65% 25%; /* Darker Red/Brown for text */
+    --card: 45 85% 98%; /* Lighter yellow/white for cards */
     --card-foreground: 358 65% 25%;
     --popover: 45 85% 98%;
     --popover-foreground: 358 65% 25%;
-    --primary: 358 79% 51%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 358 79% 51%; /* Red from logo */
+    --primary-foreground: 0 0% 100%; /* White */
     --secondary: 48 96% 88%;
     --secondary-foreground: 358 65% 25%;
     --muted: 48 96% 91%;
     --muted-foreground: 358 25% 45%;
-    --accent: 168 56% 45%;
+    --accent: 180 100% 25%; /* Teal from logo */
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
     --border: 48 20% 80%;
     --input: 48 20% 85%;
-    --ring: 358 79% 51%;
+    --ring: 358 79% 51%; /* Red from logo */
     --radius: 0.5rem;
   }
 
@@ -39,7 +39,7 @@
     --secondary-foreground: 48 96% 94%;
     --muted: 358 20% 15%;
     --muted-foreground: 48 10% 60%;
-    --accent: 168 56% 45%;
+    --accent: 180 100% 25%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
