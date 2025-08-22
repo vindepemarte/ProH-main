@@ -19,6 +19,10 @@ export async function fetchUsers(): Promise<User[]> {
         // Map 'referred_by_name' to 'referredBy' to match the User type
         return res.rows.map(row => ({
             ...row,
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            role: row.role,
             referredBy: row.referred_by_name || 'N/A', // Use the name, or N/A
         }));
     } finally {
@@ -205,7 +209,7 @@ export async function createHomework(
     const agentId = student.referredBy; // This might need more complex logic
     const price = data.wordCount * 0.10; // Dummy price logic
 
-    const newHomework: Omit<Homework, 'id' | 'status' | 'earnings' | 'files'> = {
+    const newHomework: Omit<Homework, 'id' | 'status' | 'earnings'> = {
         studentId: student.id,
         agentId: agentId,
         moduleName: data.moduleName,
@@ -213,6 +217,7 @@ export async function createHomework(
         wordCount: data.wordCount,
         deadline: data.deadline,
         notes: data.notes,
+        files: data.files,
         price: price,
     };
 
@@ -228,12 +233,11 @@ export async function createHomework(
 
         if (data.files && data.files.length > 0) {
             for (const file of data.files) {
-                const fileId = `file_${Date.now()}`;
                 // In a real app, you'd upload the file to storage first and get a URL.
                 // For now, we'll assume file.url is a placeholder.
                 await client.query(
-                    'INSERT INTO homework_files (id, homework_id, file_name, file_url) VALUES ($1, $2, $3, $4)',
-                    [fileId, homeworkId, file.name, file.url || '']
+                    'INSERT INTO homework_files (homework_id, file_name, file_url) VALUES ($1, $2, $3)',
+                    [homeworkId, file.name, file.url || '']
                 );
             }
         }
