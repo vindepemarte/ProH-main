@@ -3,7 +3,7 @@
 
 import { pool } from './db';
 import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, StudentsPerAgent, HomeworkChangeRequestData, HomeworkChangeRequest } from './types';
-import { differenceInDays, format } from 'date-fns';
+import { differenceInDays, format, addDays } from 'date-fns';
 
 const hash = (pwd: string) => `hashed_${pwd}`;
 const compare = (pwd: string, hashed: string) => hash(pwd) === hashed;
@@ -468,9 +468,9 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
     try {
         let metric1Query = '';
         let metric2Query = '';
-        const params: (string | Date)[] = [ format(fromDate, 'yyyy-MM-dd'), format(toDate, 'yyyy-MM-dd') ];
+        const params: (string | Date)[] = [ format(fromDate, 'yyyy-MM-dd'), format(addDays(toDate, 1), 'yyyy-MM-dd') ];
 
-        const dateFilter = ` AND deadline BETWEEN $1 AND $2`;
+        const dateFilter = ` AND deadline::date BETWEEN $1 AND $2`;
         let userFilter = '';
 
         const groupByClause = `GROUP BY 1 ORDER BY 1`;

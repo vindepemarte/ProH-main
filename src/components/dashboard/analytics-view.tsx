@@ -76,24 +76,35 @@ export default function AnalyticsView() {
     });
 
      const chartData = useMemo(() => {
-        if (!analyticsData || (!analyticsData.metric1.length && !analyticsData.metric2.length) || !date?.from || !date?.to) {
+        if (!analyticsData || (!analyticsData.metric1.length && !analyticsData.metric2.length)) {
             return [];
         }
 
-        const isDailyView = differenceInDays(date.to, date.from) <= 31;
+        const isDailyView = differenceInDays(date?.to || new Date(), date?.from || new Date()) <= 31;
+
+        const combinedData = new Map<string, { metric1: number; metric2: number }>();
+
+        analyticsData.metric1.forEach(item => {
+            combinedData.set(item.date, { metric1: item.value, metric2: 0 });
+        });
+
+        analyticsData.metric2.forEach(item => {
+            if (combinedData.has(item.date)) {
+                combinedData.get(item.date)!.metric2 = item.value;
+            } else {
+                combinedData.set(item.date, { metric1: 0, metric2: item.value });
+            }
+        });
         
-        const dataMap1 = new Map(analyticsData.metric1.map(item => [item.date, item.value]));
-        const dataMap2 = new Map(analyticsData.metric2.map(item => [item.date, item.value]));
-        
-        const allDates = new Set([...dataMap1.keys(), ...dataMap2.keys()]);
-        const sortedDates = Array.from(allDates).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
+        const sortedDates = Array.from(combinedData.keys()).sort();
 
         return sortedDates.map(d => {
              const name = isDailyView ? format(new Date(d), 'MMM d') : format(new Date(d), 'MMM');
+             const dataPoint = combinedData.get(d)!;
              return {
                 name,
-                metric1: dataMap1.get(d) || 0,
-                metric2: dataMap2.get(d) || 0,
+                metric1: dataPoint.metric1,
+                metric2: dataPoint.metric2,
             }
         });
 
