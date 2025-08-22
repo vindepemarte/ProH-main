@@ -10,7 +10,7 @@ const compare = (pwd: string, hashed: string) => hash(pwd) === hashed;
 export async function fetchUsers(): Promise<User[]> {
     const client = await pool.connect();
     try {
-        const res = await client.query('SELECT id, name, email, role, referred_by, reference_code FROM users ORDER BY name');
+        const res = await client.query('SELECT id, name, email, role, referred_by FROM users ORDER BY name');
         return res.rows;
     } finally {
         client.release();
@@ -52,13 +52,12 @@ export async function createUser(name: string, email: string, pass: string, refC
         }
 
         const newUserId = `user_${Date.now()}`;
-        const newUser: Omit<User, 'id'> = {
+        const newUser: Omit<User, 'id' | 'referenceCode'> = {
             name,
             email: email.toLowerCase(),
             password_hash: hash(pass),
             role: code.role,
             referredBy: code.owner_id,
-            referenceCode: null,
         };
         
         const insertRes = await client.query(
@@ -117,6 +116,7 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
             studentId: row.student_id,
             agentId: row.agent_id,
             workerId: row.worker_id,
+            superWorkerId: row.super_worker_id,
             moduleName: row.module_name,
             projectNumber: row.project_number, 
             wordCount: row.word_count, 

@@ -6,7 +6,7 @@ export interface User {
   email: string;
   password_hash?: string; // Should not be sent to client
   role: UserRole;
-  referenceCode: string | null;
+  referenceCode: string | null; // This is for the user's *own* code, fetched separately
   referredBy: string | null; // User ID of referrer
 }
 
