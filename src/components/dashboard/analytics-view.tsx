@@ -79,7 +79,7 @@ export default function AnalyticsView() {
 
      const chartData = useMemo(() => {
         if (!analyticsData || !date?.from || !date?.to) return [];
-
+        
         const isDailyView = differenceInDays(date.to, date.from) <= 31;
         
         const dataMap1 = new Map(analyticsData.metric1.map(item => [item.date, item.value]));
@@ -97,11 +97,12 @@ export default function AnalyticsView() {
                 };
             });
         } else {
-             const dataMonths = [...new Set([...analyticsData.metric1.map(i => i.date), ...analyticsData.metric2.map(i => i.date)])];
-             const monthOrder = allMonths;
-             const relevantMonths = dataMonths.sort((a,b) => monthOrder.indexOf(a.split(' ')[0]) - monthOrder.indexOf(b.split(' ')[0]));
+             const dataMonths = [...new Set([...analyticsData.metric1.map(i => i.date), ...analyticsData.metric2.map(i => i.date)])]
+                .map(monthStr => ({ year: parseInt(monthStr.split('-')[0]), month: parseInt(monthStr.split('-')[1]) -1 }))
+                .sort((a,b) => a.year - b.year || a.month - b.month)
+                .map(d => `${d.year}-${String(d.month + 1).padStart(2, '0')}`);
 
-             return relevantMonths.map(monthStr => {
+             return dataMonths.map(monthStr => {
                  const name = allMonths[new Date(monthStr + '-02').getUTCMonth()];
                  return {
                     name: name,
@@ -137,8 +138,8 @@ export default function AnalyticsView() {
     };
     
     const descriptions = {
-        metric1: isStudent ? 'Monthly amount spent on assignments.' : 'Monthly earnings from assignments.',
-        metric2: isStudent ? 'Monthly number of submitted assignments.' : 'Monthly number of new assignments.'
+        metric1: isStudent ? 'Amount spent on assignments.' : 'Earnings from assignments.',
+        metric2: isStudent ? 'Number of submitted assignments.' : 'Number of new assignments.'
     };
     
     const dataKeys = {
@@ -266,5 +267,3 @@ export default function AnalyticsView() {
         </div>
     )
 }
-
-    

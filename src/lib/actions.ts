@@ -203,7 +203,7 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
             const superAgentId = superAgentRes.rows.length > 0 ? superAgentRes.rows[0].id : null;
             const messageBase = `Homework #${homework.id} status updated to "${updates.status.replace(/_/g, ' ')}".`
 
-            if (superAgentId) {
+            if (superAgentId && ['final_payment_approval', 'requested_changes', 'word_count_change', 'deadline_change'].includes(updates.status)) {
                  notificationsToSend.push({ userId: superAgentId, message: messageBase, homeworkId: id });
             }
 
@@ -427,15 +427,6 @@ export async function createHomework(
         };
         message = `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${createdHomework.id} as the reference for your payment.`;
         
-        const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
-        if (superAgentRes.rows.length > 0) {
-            notificationDetails = {
-                userId: superAgentRes.rows[0].id,
-                message: `New homework #${homeworkId} from ${student.name} requires payment approval.`,
-                homeworkId: homeworkId
-            };
-        }
-
         await client.query('COMMIT');
 
     } catch(e) {
@@ -445,13 +436,21 @@ export async function createHomework(
         client.release();
     }
     
-    if (notificationDetails) {
+    // Create notification after transaction is committed
+    const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+    if (superAgentRes.rows.length > 0) {
+        notificationDetails = {
+            userId: superAgentRes.rows[0].id,
+            message: `New homework #${homeworkId} from ${student.name} requires payment approval.`,
+            homeworkId: homeworkId
+        };
         try {
             await createNotification(notificationDetails);
         } catch (notificationError) {
             console.error("Failed to create notification after homework creation:", notificationError);
         }
     }
+
 
     return { homework: createdHomework!, message: message! };
 }
@@ -647,7 +646,7 @@ export async function createNotification({ userId, message, homeworkId }: { user
         );
     } catch (error) {
         console.error('Failed to create notification:', { userId, message, homeworkId, error });
-        throw error;
+        // Do not re-throw as this is often a non-critical background task
     }
     finally {
         client.release();
@@ -695,5 +694,3 @@ export async function markNotificationsAsRead(userId: string): Promise<void> {
         client.release();
     }
 }
-
-    
