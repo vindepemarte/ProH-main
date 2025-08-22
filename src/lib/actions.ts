@@ -176,8 +176,7 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
 
 export async function modifyHomework(id: string, updates: Partial<Homework>): Promise<void> {
     const client = await pool.connect();
-    let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
-    let transactionCommitted = false;
+    const notificationsToSend: { userId: string; message: string; homeworkId: string }[] = [];
     
     try {
         await client.query('BEGIN');
@@ -199,36 +198,37 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
             await client.query(query, [id, ...values]);
         }
         
-        await client.query('COMMIT');
-        transactionCommitted = true;
-
         if (updates.status && updates.status !== homework.status) {
+            const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+            const superAgentId = superAgentRes.rows.length > 0 ? superAgentRes.rows[0].id : null;
             const messageBase = `Homework #${homework.id} status updated to "${updates.status.replace(/_/g, ' ')}".`
+
+            if (superAgentId) {
+                 notificationsToSend.push({ userId: superAgentId, message: messageBase, homeworkId: id });
+            }
+
             if (updates.status === 'in_progress') {
-                 const superWorkerRes = await pool.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
+                const superWorkerRes = await pool.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
                 if (superWorkerRes.rows.length > 0) {
-                    notificationDetails = { userId: superWorkerRes.rows[0].id, message: `New homework #${homework.id} is ready.`, homeworkId: id };
+                    notificationsToSend.push({ userId: superWorkerRes.rows[0].id, message: `New homework #${homework.id} is ready.`, homeworkId: id });
                 }
             } else if (updates.status === 'completed') {
-                 notificationDetails = { userId: homework.student_id, message: `${messageBase} Your files are ready.`, homeworkId: id };
-            } else if (updates.status === 'final_payment_approval') {
-                const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
-                if (superAgentRes.rows.length > 0) {
-                    notificationDetails = { userId: superAgentRes.rows[0].id, message: `HW #${homework.id} ready for final approval.`, homeworkId: id };
-                }
-            } 
+                 notificationsToSend.push({ userId: homework.student_id, message: `${messageBase} Your files are ready.`, homeworkId: id });
+            }
         }
+        
+        await client.query('COMMIT');
 
     } catch (error) {
-        if (!transactionCommitted) await client.query('ROLLBACK');
+        await client.query('ROLLBACK');
         console.error("Error in modifyHomework:", error);
         throw error;
     } finally {
         client.release();
         
-        if (notificationDetails) {
+        for (const notification of notificationsToSend) {
             try {
-                await createNotification(notificationDetails);
+                await createNotification(notification);
             } catch (notificationError) {
                 console.error("Failed to create notification after homework modification:", notificationError);
             }
@@ -238,8 +238,7 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
 
 export async function requestChangesOnHomework(homeworkId: string, data: HomeworkChangeRequestData): Promise<void> {
     const client = await pool.connect();
-    let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
-    let transactionCommitted = false;
+    const notificationsToSend: { userId: string; message: string; homeworkId: string }[] = [];
 
     try {
         await client.query('BEGIN');
@@ -265,28 +264,29 @@ export async function requestChangesOnHomework(homeworkId: string, data: Homewor
             }
         }
 
-        await client.query('COMMIT');
-        transactionCommitted = true;
-
         const superWorkerId = homework.super_worker_id || (await pool.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1")).rows[0]?.id;
+        const superAgentId = (await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1")).rows[0]?.id;
+
+        const message = `Student requested changes for homework #${homeworkId}.`;
         if (superWorkerId) {
-            notificationDetails = {
-                userId: superWorkerId,
-                message: `Student requested changes for homework #${homeworkId}.`,
-                homeworkId: homeworkId
-            };
+            notificationsToSend.push({ userId: superWorkerId, message, homeworkId });
         }
+        if (superAgentId) {
+             notificationsToSend.push({ userId: superAgentId, message, homeworkId });
+        }
+        
+        await client.query('COMMIT');
 
     } catch (error) {
-        if (!transactionCommitted) await client.query('ROLLBACK');
+        await client.query('ROLLBACK');
         console.error("Error in requestChangesOnHomework:", error);
         throw error;
     } finally {
         client.release();
 
-        if (notificationDetails) {
+        for (const notification of notificationsToSend) {
             try {
-                await createNotification(notificationDetails);
+                await createNotification(notification);
             } catch (notificationError) {
                 console.error("Failed to create notification for change request:", notificationError);
             }
@@ -423,8 +423,6 @@ export async function createHomework(
             earnings: createdHomeworkRow.earnings
         };
         message = `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${createdHomework.id} as the reference for your payment.`;
-
-        await client.query('COMMIT');
         
         const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
         if (superAgentRes.rows.length > 0) {
@@ -434,6 +432,8 @@ export async function createHomework(
                 homeworkId: homeworkId
             };
         }
+
+        await client.query('COMMIT');
 
     } catch(e) {
         await client.query('ROLLBACK');
@@ -500,7 +500,7 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
         const formatAnalytics = (rows: any[]) => {
             const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             return rows.map(r => ({
-                month: monthNames[new Date(r.month).getMonth()],
+                month: monthNames[new Date(r.month + '-02').getUTCMonth()], // Use UTC to avoid timezone issues
                 value: parseFloat(r.value) || 0
             }));
         }
@@ -615,9 +615,9 @@ export async function fetchNotificationsForUser(userId: string): Promise<Notific
         const params: string[] = [userId];
 
         if (userRole === 'super_agent') {
-            query += ` OR user_id = 'super_agent'`;
+            query += ` OR user_id = 'super_agent_notifications'`;
         } else if (userRole === 'super_worker') {
-            query += ` OR user_id = 'super_worker'`;
+            query += ` OR user_id = 'super_worker_notifications'`;
         }
         
         query += " ORDER BY created_at DESC";
@@ -687,3 +687,5 @@ export async function markNotificationsAsRead(userId: string): Promise<void> {
         client.release();
     }
 }
+
+    

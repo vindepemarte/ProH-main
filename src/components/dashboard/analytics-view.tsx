@@ -1,3 +1,4 @@
+
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -76,29 +77,24 @@ export default function AnalyticsView() {
         to: new Date(),
     });
 
-    const chartData = useMemo(() => {
+     const chartData = useMemo(() => {
         if (!analyticsData) return [];
-        
+
         const dataMap1 = new Map(analyticsData.metric1.map(item => [item.month, item.value]));
         const dataMap2 = new Map(analyticsData.metric2.map(item => [item.month, item.value]));
         
-        // Use a set of all unique months from both metrics to ensure all data is shown
         const allDataMonths = [...new Set([...analyticsData.metric1.map(i => i.month), ...analyticsData.metric2.map(i => i.month)])];
-        const relevantMonths = allMonths.filter(m => allDataMonths.includes(m));
-
-        // If there are no historical months, but there is data (e.g., one new homework), show the current month
-        if (relevantMonths.length === 0 && allDataMonths.length > 0) {
-            relevantMonths.push(allDataMonths[0]);
-        }
         
-        // If there's still nothing, fall back to showing the last few months for an empty state
-        if (relevantMonths.length === 0) {
-            const currentMonthIndex = new Date().getMonth();
-            return allMonths.slice(Math.max(0, currentMonthIndex - 5), currentMonthIndex + 1).map(month => ({
-                 name: month, metric1: 0, metric2: 0
-            }));
-        }
+        let relevantMonths = allMonths.filter(m => allDataMonths.includes(m));
 
+        if (allDataMonths.length > 0) {
+            const uniqueMonths = [...new Set(allDataMonths)];
+            const monthOrder = allMonths;
+            relevantMonths = uniqueMonths.sort((a,b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+        } else {
+             const currentMonthIndex = new Date().getMonth();
+             relevantMonths = allMonths.slice(Math.max(0, currentMonthIndex - 5), currentMonthIndex + 1)
+        }
 
         return relevantMonths.map(month => ({
             name: month,
@@ -261,3 +257,5 @@ export default function AnalyticsView() {
         </div>
     )
 }
+
+    
