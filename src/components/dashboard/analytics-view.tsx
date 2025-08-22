@@ -81,6 +81,7 @@ export default function AnalyticsView() {
         }
 
         const isDailyView = differenceInDays(date.to, date.from) <= 31;
+        
         const dataMap1 = new Map(analyticsData.metric1.map(item => [item.date, item.value]));
         const dataMap2 = new Map(analyticsData.metric2.map(item => [item.date, item.value]));
         
