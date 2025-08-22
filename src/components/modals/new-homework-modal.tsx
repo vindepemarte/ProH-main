@@ -42,8 +42,19 @@ const homeworkFormSchema = z.object({
   wordCount: z.coerce.number().min(100, { message: "Word count must be at least 100." }),
   deadline: z.date({ required_error: "A deadline is required." }),
   notes: z.string().optional(),
-  files: z.any().optional(), // In a real app, use a file upload library schema
+  files: z.any().optional(),
 })
+.refine(data => {
+    if (typeof window === 'undefined') return true; // Skip validation on server
+    if (data.files && data.files instanceof FileList) {
+      return data.files.length > 0 ? Array.from(data.files).every(file => file instanceof File) : true;
+    }
+    return true;
+  }, {
+    message: "Files must be a valid FileList.",
+    path: ["files"],
+  });
+
 
 type HomeworkFormValues = z.infer<typeof homeworkFormSchema>
 
@@ -61,13 +72,17 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
       moduleName: "",
       projectNumber: [],
       wordCount: 1000,
+      notes: "",
     },
   })
+  
+  const fileRef = form.register("files");
 
   async function onSubmit(data: HomeworkFormValues) {
-    // We'll add file upload logic later
-    await submitHomework({ ...data, files: [] });
+    const uploadedFiles = data.files && data.files.length > 0 ? Array.from(data.files as FileList).map(file => ({ name: file.name, url: "" })) : [];
+    await submitHomework({ ...data, notes: data.notes || '', files: uploadedFiles });
     form.reset();
+    onOpenChange(false);
   }
 
   return (
@@ -221,11 +236,11 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
             <FormField
               control={form.control}
               name="files"
-              render={({ field }) => (
+              render={() => (
                 <FormItem>
                   <FormLabel>Upload Files</FormLabel>
                   <FormControl>
-                    <Input type="file" multiple {...field} />
+                    <Input type="file" multiple {...fileRef} />
                   </FormControl>
                   <FormDescription>
                     Attach up to 20 files, max 50MB each.
@@ -235,7 +250,7 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
               )}
             />
 
-          <DialogFooter className="pt-4">
+          <DialogFooter className="pt-4 sticky bottom-0 bg-background/95 pb-4">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit">Submit Homework</Button>
           </DialogFooter>

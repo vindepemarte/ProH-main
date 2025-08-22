@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useAppContext } from "@/contexts/app-context"
 import { useEffect } from "react"
+import { ScrollArea } from "../ui/scroll-area"
 
 export default function SettingsView() {
     const { user, referenceCodes, getReferenceCodesForUser } = useAppContext();
@@ -20,7 +21,7 @@ export default function SettingsView() {
 
     const renderReferenceCodes = () => {
         if (!referenceCodes || referenceCodes.length === 0) {
-            return <p>No reference codes found.</p>;
+            return <p className="text-muted-foreground">No reference codes found.</p>;
         }
 
         return referenceCodes.map(rc => {
@@ -33,6 +34,7 @@ export default function SettingsView() {
         }).filter(Boolean);
     }
 
+    const wordCountTiers = Array.from({ length: 40 }, (_, i) => (i + 1) * 500);
 
     return (
         <div className="p-4 space-y-4">
@@ -42,18 +44,20 @@ export default function SettingsView() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Pricing Configuration</CardTitle>
-                        <CardDescription>Set pricing tiers for word counts.</CardDescription>
+                        <CardDescription>Set pricing tiers for word counts (in £).</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4 items-center">
-                            <Label>500 words</Label>
-                            <Input type="number" placeholder="Price" />
-                            <Label>1000 words</Label>
-                            <Input type="number" placeholder="Price" />
-                            <Label>1500 words</Label>
-                            <Input type="number" placeholder="Price" />
-                        </div>
-                        <Button>Save Pricing</Button>
+                    <CardContent>
+                        <ScrollArea className="h-72">
+                            <div className="space-y-4">
+                                {wordCountTiers.map(tier => (
+                                    <div key={tier} className="grid grid-cols-2 gap-4 items-center">
+                                        <Label>{tier} words</Label>
+                                        <Input type="number" placeholder="Price" step="0.01" />
+                                    </div>
+                                ))}
+                            </div>
+                        </ScrollArea>
+                        <Button className="mt-4">Save Pricing</Button>
                     </CardContent>
                 </Card>
                 <Card>
@@ -63,10 +67,10 @@ export default function SettingsView() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-2 gap-4 items-center">
-                            <Label>Agent Commission (%)</Label>
-                            <Input type="number" placeholder="e.g., 20" />
+                            <Label>Agent Fee (£ per 500 words)</Label>
+                            <Input type="number" placeholder="e.g., 5.00" step="0.01" />
                             <Label>Super Worker Fee (£ per 500 words)</Label>
-                            <Input type="number" defaultValue="6.25" />
+                            <Input type="number" defaultValue="6.25" step="0.01" />
                         </div>
                         <Button>Save Fees</Button>
                     </CardContent>
