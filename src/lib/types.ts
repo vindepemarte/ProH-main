@@ -1,3 +1,4 @@
+
 export type UserRole = 'super_agent' | 'agent' | 'super_worker' | 'worker' | 'student';
 
 export interface User {
@@ -86,8 +87,8 @@ export interface Notification {
 }
 
 export interface AnalyticsData {
-  metric1: { month: string; value: number }[];
-  metric2: { month: string; value: number }[];
+  metric1: { date: string; value: number }[];
+  metric2: { date: string; value: number }[];
 }
 
 export interface StudentsPerAgent {

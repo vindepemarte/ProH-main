@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { CalendarIcon, TrendingUp, Users, Wallet, Target } from "lucide-react";
 import { Calendar } from "../ui/calendar";
 import { DateRange } from "react-day-picker";
-import { addDays, format } from "date-fns";
+import { addDays, format, eachDayOfInterval, differenceInDays } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
 const allMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -78,30 +78,39 @@ export default function AnalyticsView() {
     });
 
      const chartData = useMemo(() => {
-        if (!analyticsData) return [];
+        if (!analyticsData || !date?.from || !date?.to) return [];
 
-        const dataMap1 = new Map(analyticsData.metric1.map(item => [item.month, item.value]));
-        const dataMap2 = new Map(analyticsData.metric2.map(item => [item.month, item.value]));
+        const isDailyView = differenceInDays(date.to, date.from) <= 31;
         
-        const allDataMonths = [...new Set([...analyticsData.metric1.map(i => i.month), ...analyticsData.metric2.map(i => i.month)])];
-        
-        let relevantMonths = allMonths.filter(m => allDataMonths.includes(m));
+        const dataMap1 = new Map(analyticsData.metric1.map(item => [item.date, item.value]));
+        const dataMap2 = new Map(analyticsData.metric2.map(item => [item.date, item.value]));
 
-        if (allDataMonths.length > 0) {
-            const uniqueMonths = [...new Set(allDataMonths)];
-            const monthOrder = allMonths;
-            relevantMonths = uniqueMonths.sort((a,b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+        if (isDailyView) {
+            const allDays = eachDayOfInterval({ start: date.from, end: date.to });
+            return allDays.map(day => {
+                const formattedDate = format(day, 'yyyy-MM-dd');
+                const name = format(day, 'MMM d');
+                return {
+                    name,
+                    metric1: dataMap1.get(formattedDate) || 0,
+                    metric2: dataMap2.get(formattedDate) || 0,
+                };
+            });
         } else {
-             const currentMonthIndex = new Date().getMonth();
-             relevantMonths = allMonths.slice(Math.max(0, currentMonthIndex - 5), currentMonthIndex + 1)
-        }
+             const dataMonths = [...new Set([...analyticsData.metric1.map(i => i.date), ...analyticsData.metric2.map(i => i.date)])];
+             const monthOrder = allMonths;
+             const relevantMonths = dataMonths.sort((a,b) => monthOrder.indexOf(a.split(' ')[0]) - monthOrder.indexOf(b.split(' ')[0]));
 
-        return relevantMonths.map(month => ({
-            name: month,
-            metric1: dataMap1.get(month) || 0,
-            metric2: dataMap2.get(month) || 0,
-        }));
-    }, [analyticsData]);
+             return relevantMonths.map(monthStr => {
+                 const name = allMonths[new Date(monthStr + '-02').getUTCMonth()];
+                 return {
+                    name: name,
+                    metric1: dataMap1.get(monthStr) || 0,
+                    metric2: dataMap2.get(monthStr) || 0,
+                }
+             })
+        }
+    }, [analyticsData, date]);
     
     const handleDateRangeChange = (range: DateRange | undefined) => {
         if(range?.from && range?.to) {

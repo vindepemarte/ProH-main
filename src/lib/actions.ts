@@ -214,6 +214,8 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
                 }
             } else if (updates.status === 'completed') {
                  notificationsToSend.push({ userId: homework.student_id, message: `${messageBase} Your files are ready.`, homeworkId: id });
+            } else if (updates.status === 'final_payment_approval') {
+                notificationsToSend.push({ userId: homework.student_id, message: messageBase, homeworkId: id });
             }
         }
         
@@ -370,6 +372,7 @@ export async function createHomework(
     const homeworkId = String(Math.floor(10000 + Math.random() * 90000));
     let createdHomework: Homework | null = null;
     let message: string = '';
+    
     let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
 
     try {
@@ -456,37 +459,43 @@ export async function createHomework(
 export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): Promise<AnalyticsData> {
     const client = await pool.connect();
     
-    const fromDate = from ? format(from, 'yyyy-MM-dd') : '1970-01-01';
-    const toDate = to ? format(to, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+    const fromDate = from || new Date('1970-01-01');
+    const toDate = to || new Date();
+
+    const dateRangeInDays = differenceInDays(toDate, fromDate);
+    const groupByMonth = dateRangeInDays > 31;
+    const dateFormat = groupByMonth ? 'YYYY-MM' : 'YYYY-MM-DD';
     
     try {
         let metric1Query = '';
         let metric2Query = '';
-        const params: (string | Date)[] = [ fromDate, toDate ];
+        const params: (string | Date)[] = [ format(fromDate, 'yyyy-MM-dd'), format(toDate, 'yyyy-MM-dd') ];
 
         const dateFilter = ` AND deadline BETWEEN $1 AND $2`;
         let userFilter = '';
+
+        const groupByClause = `GROUP BY 1 ORDER BY 1`;
 
         switch(user.role) {
             case 'student':
                 userFilter = ` AND student_id = $3`;
                 params.push(user.id);
-                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM(price) as value FROM homeworks WHERE status NOT IN ('declined', 'refund') ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
+                metric1Query = `SELECT TO_CHAR(deadline, '${dateFormat}') as date, SUM(price) as value FROM homeworks WHERE status NOT IN ('declined', 'refund') ${dateFilter} ${userFilter} ${groupByClause}`;
+                metric2Query = `SELECT TO_CHAR(deadline, '${dateFormat}') as date, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} ${userFilter} ${groupByClause}`;
                 break;
             case 'agent':
                 userFilter = ` AND h.student_id IN (SELECT id FROM users WHERE referred_by = $3)`;
                 params.push(user.id);
-                metric1Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h WHERE h.status = 'completed' ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks h WHERE 1=1 ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
+                metric1Query = `SELECT TO_CHAR(h.deadline, '${dateFormat}') as date, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h WHERE h.status = 'completed' ${dateFilter} ${userFilter} ${groupByClause}`;
+                metric2Query = `SELECT TO_CHAR(h.deadline, '${dateFormat}') as date, COUNT(*) as value FROM homeworks h WHERE 1=1 ${dateFilter} ${userFilter} ${groupByClause}`;
                 break;
             case 'super_worker':
-                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter} GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} GROUP BY 1 ORDER BY 1`;
+                metric1Query = `SELECT TO_CHAR(deadline, '${dateFormat}') as date, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter} ${groupByClause}`;
+                metric2Query = `SELECT TO_CHAR(deadline, '${dateFormat}') as date, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} ${groupByClause}`;
                 break;
             case 'super_agent':
-                 metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'profit')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter} GROUP BY 1 ORDER BY 1`;
-                 metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} GROUP BY 1 ORDER BY 1`;
+                 metric1Query = `SELECT TO_CHAR(deadline, '${dateFormat}') as date, SUM((earnings->>'profit')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter} ${groupByClause}`;
+                 metric2Query = `SELECT TO_CHAR(deadline, '${dateFormat}') as date, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} ${groupByClause}`;
                  break;
             default:
                  return { metric1: [], metric2: [] };
@@ -498,9 +507,8 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
         ]);
 
         const formatAnalytics = (rows: any[]) => {
-            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             return rows.map(r => ({
-                month: monthNames[new Date(r.month + '-02').getUTCMonth()], // Use UTC to avoid timezone issues
+                date: r.date,
                 value: parseFloat(r.value) || 0
             }));
         }
@@ -545,7 +553,7 @@ export async function getSuperAgentDashboardStats(): Promise<SuperAgentDashboard
             totalProfit: parseFloat(total_profit),
             totalStudents: parseInt(total_students, 10),
             averageProfitPerHomework: average_profit_per_homework,
-            studentsPerAgent: agentStudentsRes.rows
+            studentsPerAgent: agentStudentsRes.rows.map(r => ({...r, studentCount: Number(r.studentCount)}))
         };
 
     } finally {
