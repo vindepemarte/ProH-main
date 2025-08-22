@@ -1,3 +1,4 @@
+
 "use client"
 import { useAppContext } from "@/contexts/app-context";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,7 +52,7 @@ export default function HomeworkList() {
                     >
                         <CardHeader>
                             <div className="flex justify-between items-start">
-                                <CardTitle className="text-lg">#{hw.id.split('_')[1]}</CardTitle>
+                                <CardTitle className="text-lg">#{hw.id}</CardTitle>
                                 <Badge variant="outline" className={cn("capitalize", statusColors[hw.status])}>
                                     {hw.status.replace(/_/g, ' ')}
                                 </Badge>

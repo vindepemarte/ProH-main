@@ -198,23 +198,23 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
 
         // --- Handle Notifications based on Status Change ---
         if (updates.status && updates.status !== homework.status) {
-            const messageBase = `Homework #${id.split('_')[1]} status has been updated to "${updates.status.replace(/_/g, ' ')}".`
+            const messageBase = `Homework #${homework.id} status has been updated to "${updates.status.replace(/_/g, ' ')}".`
             if (updates.status === 'in_progress') {
                 const superWorkerRes = await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
                 if (superWorkerRes.rows.length > 0) {
-                    notificationDetails = { userId: superWorkerRes.rows[0].id, message: `New homework #${id.split('_')[1]} is ready for assignment.`, homeworkId: id };
+                    notificationDetails = { userId: superWorkerRes.rows[0].id, message: `New homework #${homework.id} is ready for assignment.`, homeworkId: id };
                 }
             } else if (updates.status === 'completed') {
                  notificationDetails = { userId: homework.student_id, message: `${messageBase} Your files are ready for download.`, homeworkId: id };
             } else if (updates.status === 'final_payment_approval') {
                 const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
                 if (superAgentRes.rows.length > 0) {
-                    notificationDetails = { userId: superAgentRes.rows[0].id, message: `Homework #${id.split('_')[1]} is ready for final approval.`, homeworkId: id };
+                    notificationDetails = { userId: superAgentRes.rows[0].id, message: `Homework #${homework.id} is ready for final approval.`, homeworkId: id };
                 }
             } else if (updates.status === 'requested_changes') {
                  const superWorkerId = homework.super_worker_id || (await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1")).rows[0]?.id;
                  if (superWorkerId) {
-                     notificationDetails = { userId: superWorkerId, message: `The student has requested changes for homework #${id.split('_')[1]}.`, homeworkId: id };
+                     notificationDetails = { userId: superWorkerId, message: `The student has requested changes for homework #${homework.id}.`, homeworkId: id };
                  }
             }
         }
@@ -310,12 +310,16 @@ export async function createHomework(
     }
 ): Promise<{homework: Homework, message: string}> {
     const client = await pool.connect();
-    const homeworkId = `hw_${Date.now()}`;
+    // Use a 5-digit random number for the public-facing ID
+    const homeworkId = String(Math.floor(10000 + Math.random() * 90000));
     let createdHomework: Homework;
     let message: string;
     let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
+    let transactionCommitted = false;
 
     try {
+        await client.query('BEGIN');
+        
         const pricingConfig = await getPricingConfig();
         const studentDetails = (await client.query('SELECT * FROM users WHERE id = $1', [student.id])).rows[0];
         const agent = studentDetails.referred_by ? (await client.query('SELECT * FROM users WHERE id = $1', [studentDetails.referred_by])).rows[0] : null;
@@ -334,8 +338,6 @@ export async function createHomework(
             profit: profit
         };
         
-        await client.query('BEGIN');
-
         const res = await client.query(
             `INSERT INTO homeworks 
             (id, student_id, agent_id, status, module_name, project_number, word_count, deadline, notes, price, earnings) 
@@ -351,8 +353,6 @@ export async function createHomework(
                 );
             }
         }
-
-        await client.query('COMMIT');
         
         const createdHomeworkRow = res.rows[0];
         createdHomework = {
@@ -367,17 +367,11 @@ export async function createHomework(
             files: data.files,
             earnings: createdHomeworkRow.earnings
         };
-        message = `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${createdHomework.id.split('_')[1]} as the reference for your payment.`;
+        message = `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${createdHomework.id} as the reference for your payment.`;
 
-        const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
-        if (superAgentRes.rows.length > 0) {
-            notificationDetails = {
-                userId: superAgentRes.rows[0].id,
-                message: `New homework #${homeworkId.split('_')[1]} from ${student.name} requires payment approval.`,
-                homeworkId: homeworkId
-            };
-        }
-        
+        await client.query('COMMIT');
+        transactionCommitted = true;
+
     } catch(e) {
         await client.query('ROLLBACK');
         throw e;
@@ -385,16 +379,24 @@ export async function createHomework(
         client.release();
     }
     
-    // Create notification after transaction is closed
-    if (notificationDetails) {
-        try {
-            await createNotification(notificationDetails);
-        } catch (notificationError) {
-            console.error("Failed to create notification after homework creation:", notificationError);
+    // Create notification only after transaction is successfully closed
+    if (transactionCommitted) {
+        const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+        if (superAgentRes.rows.length > 0) {
+            notificationDetails = {
+                userId: superAgentRes.rows[0].id,
+                message: `New homework #${homeworkId} from ${student.name} requires payment approval.`,
+                homeworkId: homeworkId
+            };
+            try {
+                await createNotification(notificationDetails);
+            } catch (notificationError) {
+                console.error("Failed to create notification after homework creation:", notificationError);
+            }
         }
     }
 
-    return { homework: createdHomework, message };
+    return { homework: createdHomework!, message: message! };
 }
 
 export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): Promise<AnalyticsData> {
@@ -406,28 +408,31 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
     try {
         let metric1Query = '';
         let metric2Query = '';
-        const params: string[] = [user.id, fromDate, toDate];
+        const params: (string | Date)[] = [ fromDate, toDate ];
 
-        const dateFilter = ` AND deadline BETWEEN $2 AND $3`;
+        const dateFilter = ` AND deadline BETWEEN $1 AND $2`;
+        let userFilter = '';
 
         switch(user.role) {
             case 'student':
-                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM(price) as value FROM homeworks WHERE student_id = $1 AND status = 'completed' ${dateFilter} GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE student_id = $1 ${dateFilter} GROUP BY 1 ORDER BY 1`;
+                userFilter = ` AND student_id = $3`;
+                params.push(user.id);
+                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM(price) as value FROM homeworks WHERE status = 'completed' ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
                 break;
             case 'agent':
-                metric1Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 AND h.status = 'completed' ${dateFilter} GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 ${dateFilter} GROUP BY 1 ORDER BY 1`;
+                userFilter = ` AND h.student_id IN (SELECT id FROM users WHERE referred_by = $3)`;
+                params.push(user.id);
+                metric1Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h WHERE h.status = 'completed' ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks h WHERE 1=1 ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
                 break;
             case 'super_worker':
-                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter.replace(/\$2/g, '$1').replace(/\$3/g, '$2')} GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter.replace(/\$2/g, '$1').replace(/\$3/g, '$2')} GROUP BY 1 ORDER BY 1`;
-                params.shift();
+                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter} GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} GROUP BY 1 ORDER BY 1`;
                 break;
             case 'super_agent':
-                 metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'profit')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter.replace(/\$2/g, '$1').replace(/\$3/g, '$2')} GROUP BY 1 ORDER BY 1`;
-                 metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter.replace(/\$2/g, '$1').replace(/\$3/g, '$2')} GROUP BY 1 ORDER BY 1`;
-                 params.shift(); // No user id needed for super agent
+                 metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'profit')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter} GROUP BY 1 ORDER BY 1`;
+                 metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} GROUP BY 1 ORDER BY 1`;
                  break;
             default:
                  return { metric1: [], metric2: [] };
@@ -625,7 +630,3 @@ export async function markNotificationsAsRead(userId: string): Promise<void> {
         client.release();
     }
 }
-
-    
-
-    

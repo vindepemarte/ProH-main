@@ -1,3 +1,4 @@
+
 "use client"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
@@ -38,6 +39,10 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
         updateHomework(hw.id, { status });
     }
 
+    const handleRequestChanges = () => {
+        updateHomework(hw.id, { status: 'requested_changes' });
+    }
+
     const handleAssignWorker = (workerId: string) => {
         updateHomework(hw.id, { workerId });
     }
@@ -47,7 +52,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
             <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-sm">
                 <DialogHeader>
                     <div className="flex justify-between items-center">
-                        <DialogTitle className="text-2xl">Homework #{hw.id.split('_')[1]}</DialogTitle>
+                        <DialogTitle className="text-2xl">Homework #{hw.id}</DialogTitle>
                         <Badge variant="outline" className={cn("capitalize", statusColors[hw.status])}>{hw.status.replace(/_/g, ' ')}</Badge>
                     </div>
                     <DialogDescription>{hw.moduleName}</DialogDescription>
@@ -137,7 +142,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                     {user.role === 'student' && (
                         <div className="flex flex-col gap-2">
                             {hw.status === 'completed' && <Button className="w-full gap-2"><FileDown/> Download Final Work</Button>}
-                            <Button variant="outline" className="w-full gap-2"><PencilRuler /> Request Changes</Button>
+                            <Button variant="outline" className="w-full gap-2" onClick={handleRequestChanges}><PencilRuler /> Request Changes</Button>
                         </div>
                     )}
                     {(user.role === 'student' && ['word_count_change', 'deadline_change'].includes(hw.status)) && (
