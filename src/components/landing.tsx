@@ -18,7 +18,6 @@ export default function Landing() {
           width={250} 
           height={250} 
           className="mb-8"
-          priority
         />
         <h1 className="text-4xl md:text-5xl font-extrabold font-headline text-primary tracking-tight">
           Streamline Your Success
