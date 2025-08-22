@@ -10,10 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { CalendarIcon, TrendingUp, Users, Wallet, Target } from "lucide-react";
 import { Calendar } from "../ui/calendar";
 import { DateRange } from "react-day-picker";
-import { addDays, format, eachDayOfInterval, differenceInDays } from "date-fns";
+import { addDays, format, differenceInDays } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-
-const allMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function SuperAgentKPIs() {
     const { superAgentStats } = useAppContext();
@@ -79,38 +77,26 @@ export default function AnalyticsView() {
 
      const chartData = useMemo(() => {
         if (!analyticsData || !date?.from || !date?.to) return [];
-        
+
         const isDailyView = differenceInDays(date.to, date.from) <= 31;
-        
-        const dataMap1 = new Map(analyticsData.metric1.map(item => [item.date, item.value]));
-        const dataMap2 = new Map(analyticsData.metric2.map(item => [item.date, item.value]));
+        const combinedData = new Map<string, { name: string; metric1: number; metric2: number }>();
 
-        if (isDailyView) {
-            const allDays = eachDayOfInterval({ start: date.from, end: date.to });
-            return allDays.map(day => {
-                const formattedDate = format(day, 'yyyy-MM-dd');
-                const name = format(day, 'MMM d');
-                return {
-                    name,
-                    metric1: dataMap1.get(formattedDate) || 0,
-                    metric2: dataMap2.get(formattedDate) || 0,
-                };
-            });
-        } else {
-             const dataMonths = [...new Set([...analyticsData.metric1.map(i => i.date), ...analyticsData.metric2.map(i => i.date)])]
-                .map(monthStr => ({ year: parseInt(monthStr.split('-')[0]), month: parseInt(monthStr.split('-')[1]) -1 }))
-                .sort((a,b) => a.year - b.year || a.month - b.month)
-                .map(d => `${d.year}-${String(d.month + 1).padStart(2, '0')}`);
+        analyticsData.metric1.forEach(item => {
+            const name = isDailyView ? format(new Date(item.date), 'MMM d') : format(new Date(item.date), 'MMM');
+            combinedData.set(item.date, { name, metric1: item.value, metric2: 0 });
+        });
 
-             return dataMonths.map(monthStr => {
-                 const name = allMonths[new Date(monthStr + '-02').getUTCMonth()];
-                 return {
-                    name: name,
-                    metric1: dataMap1.get(monthStr) || 0,
-                    metric2: dataMap2.get(monthStr) || 0,
-                }
-             })
-        }
+        analyticsData.metric2.forEach(item => {
+            const name = isDailyView ? format(new Date(item.date), 'MMM d') : format(new Date(item.date), 'MMM');
+            if (combinedData.has(item.date)) {
+                combinedData.get(item.date)!.metric2 = item.value;
+            } else {
+                combinedData.set(item.date, { name, metric1: 0, metric2: item.value });
+            }
+        });
+
+        return Array.from(combinedData.values());
+
     }, [analyticsData, date]);
     
     const handleDateRangeChange = (range: DateRange | undefined) => {
@@ -147,7 +133,7 @@ export default function AnalyticsView() {
         metric2: 'metric2'
     }
 
-    const noData = !chartData || chartData.every(d => d.metric1 === 0 && d.metric2 === 0);
+    const noData = !chartData || chartData.length === 0;
 
     return (
         <div className="p-4 space-y-4">
@@ -267,3 +253,5 @@ export default function AnalyticsView() {
         </div>
     )
 }
+
+    
