@@ -6,7 +6,7 @@ import HomeworkList from "./dashboard/homework-list";
 import AnalyticsView from "./dashboard/analytics-view";
 import SettingsView from "./dashboard/settings-view";
 import NotificationsView from "./dashboard/notifications-view";
-import { ScrollArea } from "./ui/scroll-area";
+import UsersView from "./dashboard/users-view";
 import HomeworkModal from "./modals/homework-modal";
 
 export default function Dashboard() {
@@ -18,14 +18,15 @@ export default function Dashboard() {
         <div className="min-h-screen bg-background pb-16">
             <header className="p-4 border-b">
                 <h1 className="text-2xl font-bold text-primary">Welcome, {user.name}</h1>
-                <p className="text-muted-foreground capitalize">{user.role.replace('_', ' ')} Dashboard</p>
+                <p className="text-muted-foreground capitalize">{user.role.replace(/_/g, ' ')} Dashboard</p>
             </header>
             <Tabs defaultValue="homeworks" className="w-full">
                 <TabsList className="m-4">
                     <TabsTrigger value="homeworks">Homeworks</TabsTrigger>
                     <TabsTrigger value="analytics">Analytics</TabsTrigger>
                     <TabsTrigger value="notifications">Notifications</TabsTrigger>
-                    {user.role === 'super_agent' && <TabsTrigger value="settings">Settings</TabsTrigger>}
+                    {(user.role === 'super_agent' || user.role === 'agent' || user.role === 'super_worker') && <TabsTrigger value="settings">Settings</TabsTrigger>}
+                    {user.role === 'super_agent' && <TabsTrigger value="users">Users</TabsTrigger>}
                 </TabsList>
 
                 <TabsContent value="homeworks">
@@ -37,9 +38,14 @@ export default function Dashboard() {
                 <TabsContent value="notifications">
                     <NotificationsView />
                 </TabsContent>
-                {user.role === 'super_agent' && (
+                {(user.role === 'super_agent' || user.role === 'agent' || user.role === 'super_worker') && (
                     <TabsContent value="settings">
                         <SettingsView />
+                    </TabsContent>
+                )}
+                 {user.role === 'super_agent' && (
+                    <TabsContent value="users">
+                        <UsersView />
                     </TabsContent>
                 )}
             </Tabs>

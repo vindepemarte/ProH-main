@@ -55,7 +55,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                 <ScrollArea className="flex-grow pr-6 -mr-6">
                 <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
-                        <div><Label>Project Number</Label><p>{hw.projectNumber.join(', ')}</p></div>
+                        <div><Label>Project Number</Label><p>{Array.isArray(hw.projectNumber) ? hw.projectNumber.join(', ') : hw.projectNumber}</p></div>
                         <div><Label>Word Count</Label><p>{hw.wordCount}</p></div>
                         <div><Label>Deadline</Label><p>{new Date(hw.deadline).toLocaleString()}</p></div>
                         {hw.price && <div><Label>Price</Label><p>£{Number(hw.price).toFixed(2)}</p></div>}
@@ -79,28 +79,31 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
 
                     {/* Role-specific views */}
                     {user.role === 'super_agent' && hw.earnings && (
-                        <div className="p-4 bg-primary/10 rounded-lg space-y-2">
+                        <div className="p-4 bg-primary/10 rounded-lg space-y-2 mt-4">
                             <h3 className="font-bold">Financials</h3>
                             <p>Revenue: £{hw.earnings.total.toFixed(2)}</p>
                             {hw.earnings.agent && <p>Agent Pay: £{hw.earnings.agent.toFixed(2)}</p>}
-                            <p>S.Worker Pay: £{hw.earnings.super_worker?.toFixed(2)}</p>
+                            {hw.earnings.super_worker && <p>S.Worker Pay: £{hw.earnings.super_worker.toFixed(2)}</p>}
                             <p className="font-semibold">Profit: £{hw.earnings.profit.toFixed(2)}</p>
                         </div>
                     )}
-                    {user.role === 'agent' && hw.earnings && (
-                         <div className="p-4 bg-primary/10 rounded-lg space-y-2">
+                    {user.role === 'agent' && hw.earnings?.agent && (
+                         <div className="p-4 bg-primary/10 rounded-lg space-y-2 mt-4">
                             <h3 className="font-bold">Your Earnings</h3>
-                            <p>Profit: £{hw.earnings.agent?.toFixed(2) || '0.00'}</p>
+                            <p>Profit: £{hw.earnings.agent.toFixed(2)}</p>
                         </div>
                     )}
-                     {user.role === 'super_worker' && hw.earnings && (
-                         <div className="p-4 bg-primary/10 rounded-lg space-y-2">
+                     {user.role === 'super_worker' && hw.earnings?.super_worker && (
+                         <div className="p-4 bg-primary/10 rounded-lg space-y-2 mt-4">
                             <h3 className="font-bold">Your Earnings</h3>
-                            <p>Profit: £{hw.earnings.super_worker?.toFixed(2) || '0.00'}</p>
+                            <p>Profit: £{hw.earnings.super_worker.toFixed(2)}</p>
                         </div>
                     )}
+                    {(user.role === 'worker') && <div className="hidden"></div>}
+
 
                     {/* Role-specific actions */}
+                    <div className="mt-4 pt-4 border-t">
                     {user.role === 'super_agent' && (
                         <div>
                             <Label>Change Status</Label>
@@ -109,7 +112,9 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                 <SelectContent>
                                     <SelectItem value="payment_approval">Payment Approval</SelectItem>
                                     <SelectItem value="in_progress">In Progress</SelectItem>
+                                    <SelectItem value="final_payment_approval">Final Payment Approval</SelectItem>
                                     <SelectItem value="completed">Completed</SelectItem>
+                                    <SelectItem value="declined">Declined</SelectItem>
                                     <SelectItem value="refund">Refund</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -117,8 +122,10 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                     )}
                     {user.role === 'super_worker' && (
                         <div className="flex gap-2">
-                            <Select onValueChange={handleAssignWorker} disabled={!!hw.workerId}>
-                                <SelectTrigger><SelectValue placeholder="Assign to worker..." /></SelectTrigger>
+                            <Select onValueChange={handleAssignWorker} defaultValue={hw.workerId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Assign to worker..." />
+                                </SelectTrigger>
                                 <SelectContent>
                                     {workers.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
                                 </SelectContent>
@@ -139,6 +146,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                             <Button className="w-full">Approve</Button>
                         </div>
                     )}
+                    </div>
                 </div>
                 </ScrollArea>
                 <DialogFooter>

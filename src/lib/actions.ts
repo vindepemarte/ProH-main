@@ -1,7 +1,7 @@
 'use server';
 
 import { pool } from './db';
-import { User, Homework, HomeworkStatus, UserRole } from './types';
+import { User, Homework, HomeworkStatus, UserRole, ReferenceCode } from './types';
 
 // Simple password hashing for dummy data
 const hash = (pwd: string) => `hashed_${pwd}`;
@@ -10,7 +10,7 @@ const compare = (pwd: string, hashed: string) => hash(pwd) === hashed;
 export async function fetchUsers(): Promise<User[]> {
     const client = await pool.connect();
     try {
-        const res = await client.query('SELECT * FROM users');
+        const res = await client.query('SELECT id, name, email, role, referred_by, reference_code FROM users ORDER BY name');
         return res.rows;
     } finally {
         client.release();
@@ -24,7 +24,9 @@ export async function authenticateUser(email: string, pass: string): Promise<Use
         if (res.rows.length > 0) {
             const user = res.rows[0];
             if (compare(pass, user.password_hash)) {
-                return user;
+                // remove password hash from returned object
+                const { password_hash, ...userWithoutPassword } = user;
+                return userWithoutPassword;
             }
         }
         return null;
@@ -60,12 +62,13 @@ export async function createUser(name: string, email: string, pass: string, refC
         };
         
         const insertRes = await client.query(
-            'INSERT INTO users (id, name, email, password_hash, role, referred_by, reference_code) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-            [newUserId, newUser.name, newUser.email, newUser.password_hash, newUser.role, newUser.referredBy, newUser.referenceCode]
+            'INSERT INTO users (id, name, email, password_hash, role, referred_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [newUserId, newUser.name, newUser.email, newUser.password_hash, newUser.role, newUser.referredBy]
         );
         
         await client.query('COMMIT');
-        return insertRes.rows[0];
+        const { password_hash, ...userWithoutPassword } = insertRes.rows[0];
+        return userWithoutPassword;
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -74,16 +77,6 @@ export async function createUser(name: string, email: string, pass: string, refC
     }
 }
 
-
-export async function fetchHomeworks(): Promise<Homework[]> {
-    const client = await pool.connect();
-    try {
-        const res = await client.query('SELECT * FROM homeworks');
-        return res.rows;
-    } finally {
-        client.release();
-    }
-}
 
 export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
     const client = await pool.connect();
@@ -103,8 +96,9 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
             params.push(user.id);
             break;
         case 'super_worker':
-            query += ` WHERE h.status = ANY($1::homework_status[])`;
-            params.push(['in_progress', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change']);
+            query += ` WHERE h.status = ANY($1::homework_status[]) OR h.super_worker_id = $2`;
+            params.push(['in_progress', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed']);
+            params.push(user.id);
             break;
         case 'worker':
             query += ' WHERE h.worker_id = $1';
@@ -113,10 +107,20 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
         default:
             return [];
     }
+    
+    query += ' ORDER BY deadline DESC';
 
     try {
         const res = await client.query(query, params);
-        return res.rows.map(row => ({...row, projectNumber: row.project_number, wordCount: row.word_count, moduleName: row.module_name}));
+        return res.rows.map(row => ({
+            ...row,
+            studentId: row.student_id,
+            agentId: row.agent_id,
+            workerId: row.worker_id,
+            moduleName: row.module_name,
+            projectNumber: row.project_number, 
+            wordCount: row.word_count, 
+        }));
     } finally {
         client.release();
     }
@@ -126,17 +130,15 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
 export async function modifyHomework(id: string, updates: Partial<Homework>): Promise<void> {
     const client = await pool.connect();
     
-    // Convert camelCase keys from JS to snake_case for the database
     const dbUpdates: { [key: string]: any } = {};
     if (updates.status) dbUpdates.status = updates.status;
     if (updates.workerId) dbUpdates.worker_id = updates.workerId;
     if (updates.price) dbUpdates.price = updates.price;
-    // Add other updatable fields here as needed
     
     const setClause = Object.keys(dbUpdates).map((key, i) => `${key} = $${i + 2}`).join(', ');
     const values = Object.values(dbUpdates);
 
-    if (values.length === 0) return; // No updates to perform
+    if (values.length === 0) return;
 
     const query = `UPDATE homeworks SET ${setClause} WHERE id = $1`;
     
@@ -150,7 +152,17 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
 export async function fetchWorkersForSuperWorker(superWorkerId: string): Promise<User[]> {
     const client = await pool.connect();
     try {
-        const res = await client.query("SELECT * FROM users WHERE role = 'worker' AND referred_by = $1", [superWorkerId]);
+        const res = await client.query("SELECT id, name, email, role FROM users WHERE role = 'worker' AND referred_by = $1", [superWorkerId]);
+        return res.rows;
+    } finally {
+        client.release();
+    }
+}
+
+export async function fetchReferenceCodesForUser(userId: string): Promise<ReferenceCode[]> {
+    const client = await pool.connect();
+    try {
+        const res = await client.query("SELECT * FROM reference_codes WHERE owner_id = $1", [userId]);
         return res.rows;
     } finally {
         client.release();

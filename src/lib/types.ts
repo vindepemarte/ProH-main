@@ -4,13 +4,13 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  password_hash: string;
+  password_hash?: string; // Should not be sent to client
   role: UserRole;
   referenceCode: string | null;
   referredBy: string | null; // User ID of referrer
 }
 
-export type ReferenceCodeType = 'STUDENT' | 'AGENT' | 'WORKER';
+export type ReferenceCodeType = 'STUDENT' | 'AGENT' | 'WORKER' | 'SUPER_WORKER';
 
 export interface ReferenceCode {
   code: string;
@@ -45,6 +45,7 @@ export interface Homework {
   studentId: string;
   agentId?: string;
   workerId?: string;
+  superWorkerId?: string;
   status: HomeworkStatus;
   moduleName: string;
   projectNumber: ProjectNumber[];
