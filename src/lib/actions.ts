@@ -1,7 +1,7 @@
 'use server';
 
 import { pool } from './db';
-import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig } from './types';
+import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole } from './types';
 import { differenceInDays } from 'date-fns';
 
 // Simple password hashing for dummy data
@@ -77,6 +77,11 @@ export async function createUser(name: string, email: string, pass: string, refC
             [newUserId, newUser.name, newUser.email, newUser.password_hash, newUser.role, newUser.referredBy]
         );
         
+        await createNotification({
+            userId: code.owner_id, // Notify the person who owns the code
+            message: `A new ${newUser.role}, ${newUser.name}, has registered using your reference code.`
+        });
+        
         await client.query('COMMIT');
         const { password_hash, ...userWithoutPassword } = insertRes.rows[0];
         return userWithoutPassword;
@@ -144,24 +149,59 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
     }
 }
 
-
 export async function modifyHomework(id: string, updates: Partial<Homework>): Promise<void> {
     const client = await pool.connect();
     
-    const dbUpdates: { [key: string]: any } = {};
-    if (updates.status) dbUpdates.status = updates.status;
-    if (updates.workerId) dbUpdates.worker_id = updates.workerId;
-    if (updates.price) dbUpdates.price = updates.price;
-    
-    const setClause = Object.keys(dbUpdates).map((key, i) => `${key} = $${i + 2}`).join(', ');
-    const values = Object.values(dbUpdates);
-
-    if (values.length === 0) return;
-
-    const query = `UPDATE homeworks SET ${setClause} WHERE id = $1`;
-    
     try {
-        await client.query(query, [id, ...values]);
+        await client.query('BEGIN');
+        
+        const homeworkRes = await client.query('SELECT * FROM homeworks WHERE id = $1', [id]);
+        if (homeworkRes.rows.length === 0) throw new Error("Homework not found");
+        const homework = homeworkRes.rows[0];
+
+        const dbUpdates: { [key: string]: any } = {};
+        if (updates.status) dbUpdates.status = updates.status;
+        if (updates.workerId) dbUpdates.worker_id = updates.workerId;
+        if (updates.price) dbUpdates.price = updates.price;
+        
+        const setClause = Object.keys(dbUpdates).map((key, i) => `${key} = $${i + 2}`).join(', ');
+        const values = Object.values(dbUpdates);
+
+        if (values.length > 0) {
+            const query = `UPDATE homeworks SET ${setClause} WHERE id = $1`;
+            await client.query(query, [id, ...values]);
+        }
+
+        // --- Handle Notifications based on Status Change ---
+        if (updates.status && updates.status !== homework.status) {
+            const messageBase = `Homework #${id.split('_')[1]} status has been updated to "${updates.status.replace(/_/g, ' ')}".`
+            if (updates.status === 'in_progress') {
+                // Find and notify the first available super_worker
+                const superWorkerRes = await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
+                if (superWorkerRes.rows.length > 0) {
+                    await createNotification({ userId: superWorkerRes.rows[0].id, message: `New homework #${id.split('_')[1]} is ready for assignment.`, homeworkId: id });
+                }
+            } else if (updates.status === 'completed') {
+                 await createNotification({ userId: homework.student_id, message: `${messageBase} Your files are ready for download.`, homeworkId: id });
+            } else if (updates.status === 'final_payment_approval') {
+                const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+                if (superAgentRes.rows.length > 0) {
+                    await createNotification({ userId: superAgentRes.rows[0].id, message: `Homework #${id.split('_')[1]} is ready for final approval.`, homeworkId: id });
+                }
+            } else if (updates.status === 'requested_changes') {
+                 const superWorkerId = homework.super_worker_id || (await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1")).rows[0]?.id;
+                 if (superWorkerId) {
+                     await createNotification({ userId: superWorkerId, message: `The student has requested changes for homework #${id.split('_')[1]}.`, homeworkId: id });
+                 }
+            }
+        }
+        
+        await client.query('COMMIT');
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error("Error in modifyHomework:", error);
+        throw error;
     } finally {
         client.release();
     }
@@ -219,10 +259,14 @@ export async function createHomework(
 
     // Calculate base price
     const wordTiers = pricingConfig.wordTiers;
-    const closestWordTier = Object.keys(wordTiers).map(Number).reduce((prev, curr) => 
-        (Math.abs(curr - data.wordCount) < Math.abs(prev - data.wordCount) ? curr : prev)
-    );
+    const closestWordTier = Object.keys(wordTiers).map(Number).sort((a, b) => a - b).find(tier => tier >= data.wordCount) || Math.max(...Object.keys(wordTiers).map(Number));
     let basePrice = wordTiers[closestWordTier];
+    if (data.wordCount > closestWordTier) { // Extrapolate for higher word counts if needed
+        const highestTier = Math.max(...Object.keys(wordTiers).map(Number));
+        const pricePerWord = wordTiers[highestTier] / highestTier;
+        basePrice = pricePerWord * data.wordCount;
+    }
+
 
     // Calculate deadline charge
     const daysUntilDeadline = differenceInDays(data.deadline, new Date());
@@ -248,6 +292,11 @@ export async function createHomework(
         super_worker: superWorkerPay,
         profit: profit
     };
+    
+    const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+    if (superAgentRes.rows.length === 0) throw new Error("No super agent found in the system to notify.");
+    const superAgentId = superAgentRes.rows[0].id;
+
 
     try {
         await client.query('BEGIN');
@@ -268,9 +317,28 @@ export async function createHomework(
             }
         }
         
+        await createNotification({
+            userId: superAgentId,
+            message: `New homework #${homeworkId.split('_')[1]} from ${student.name} requires payment approval.`,
+            homeworkId: homeworkId
+        });
+
         await client.query('COMMIT');
-        const createdHomework = res.rows[0];
-        createdHomework.files = data.files;
+        
+        const createdHomeworkRow = res.rows[0];
+        const createdHomework = {
+            ...createdHomeworkRow,
+             studentId: createdHomeworkRow.student_id,
+            agentId: createdHomeworkRow.agent_id,
+            workerId: createdHomeworkRow.worker_id,
+            superWorkerId: createdHomeworkRow.super_worker_id,
+            moduleName: createdHomeworkRow.module_name,
+            projectNumber: createdHomeworkRow.project_number, 
+            wordCount: createdHomeworkRow.word_count,
+            files: data.files,
+            earnings: createdHomeworkRow.earnings
+        };
+        
         return {
             homework: createdHomework,
             message: `Your homework has been submitted successfully. The reference ID is ${homeworkId}. Please use this ID as the reference for your payment.`
@@ -362,10 +430,20 @@ export async function getCalculatedPrice(wordCount: number, deadline: Date): Pro
     const pricingConfig = await getPricingConfig();
     
     const wordTiers = pricingConfig.wordTiers;
-    const closestWordTier = Object.keys(wordTiers).map(Number).reduce((prev, curr) => 
-        (Math.abs(curr - wordCount) < Math.abs(prev - wordCount) ? curr : prev)
-    );
-    const basePrice = wordTiers[closestWordTier] || 0;
+    const sortedTiers = Object.keys(wordTiers).map(Number).sort((a,b) => a - b);
+    
+    let basePrice = 0;
+
+    const closestWordTier = sortedTiers.find(tier => tier >= wordCount);
+
+    if (closestWordTier) {
+        basePrice = wordTiers[closestWordTier];
+    } else {
+        const highestTier = sortedTiers[sortedTiers.length -1];
+        const pricePerWord = wordTiers[highestTier] / highestTier;
+        basePrice = pricePerWord * wordCount;
+    }
+
 
     const daysUntilDeadline = differenceInDays(deadline, new Date());
     let deadlineCharge = 0;
@@ -376,4 +454,49 @@ export async function getCalculatedPrice(wordCount: number, deadline: Date): Pro
     return basePrice + deadlineCharge;
 }
 
-    
+export async function fetchNotificationsForUser(userId: string): Promise<Notification[]> {
+    const client = await pool.connect();
+    try {
+        const userRes = await client.query('SELECT role FROM users WHERE id = $1', [userId]);
+        if(userRes.rows.length === 0) return [];
+        const userRole = userRes.rows[0].role;
+        
+        const res = await client.query(
+            "SELECT * FROM notifications WHERE (user_id = $1 OR user_id = $2 OR user_id = 'all') AND is_read = false ORDER BY created_at DESC",
+            [userId, userRole]
+        );
+        return res.rows;
+    } finally {
+        client.release();
+    }
+}
+
+export async function createNotification({ userId, message, homeworkId }: { userId: string; message: string; homeworkId?: string }): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query(
+            'INSERT INTO notifications (user_id, message, homework_id) VALUES ($1, $2, $3)',
+            [userId, message, homeworkId]
+        );
+    } finally {
+        client.release();
+    }
+}
+
+export async function broadcastNotification({ targetRole, targetUser, message }: { targetRole?: UserRole, targetUser?: string, message: string }): Promise<void> {
+    if (!targetRole && !targetUser) {
+        throw new Error("Either a target role or a target user must be specified.");
+    }
+    const target = targetUser || targetRole;
+    await createNotification({ userId: target!, message });
+}
+
+export async function updateUserRole(userId: string, newRole: UserRole): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query("UPDATE users SET role = $1 WHERE id = $2", [newRole, userId]);
+        await createNotification({ userId, message: `An administrator has changed your role to ${newRole.replace(/_/g, ' ')}.` });
+    } finally {
+        client.release();
+    }
+}

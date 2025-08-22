@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig } from '@/lib/types';
+import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import { 
   fetchUsers, 
@@ -16,7 +16,10 @@ import {
   getAnalyticsForUser,
   getPricingConfig,
   savePricingConfig,
-  getCalculatedPrice
+  getCalculatedPrice,
+  fetchNotificationsForUser,
+  broadcastNotification,
+  updateUserRole
 } from '@/lib/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
@@ -62,6 +65,11 @@ interface AppContextType {
   handleSavePricingConfig: (config: PricingConfig) => Promise<void>;
 
   calculatePrice: (wordCount: number, deadline: Date) => Promise<number>;
+  
+  notifications: Notification[];
+  handleBroadcastNotification: (message: string, targetRole?: UserRole, targetUser?: string) => Promise<void>;
+
+  handleUpdateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -71,6 +79,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [homeworks, setHomeworks] = useState<Homework[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -126,6 +135,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast({ variant: 'destructive', title: "Error", description: "Could not fetch analytics data." });
     }
   }, [user, toast]);
+  
+  const fetchUserNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await fetchNotificationsForUser(user.id);
+      setNotifications(data);
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: "Could not fetch notifications." });
+    }
+  }, [user, toast]);
+
 
   const fetchPricingConfig = useCallback(async () => {
     try {
@@ -148,11 +169,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleUpdateUserRole = async (userId: string, newRole: UserRole) => {
+     try {
+        await updateUserRole(userId, newRole);
+        const updatedUsers = allUsers.map(u => u.id === userId ? { ...u, role: newRole } : u);
+        setAllUsers(updatedUsers);
+        toast({ title: "Success", description: "User role updated successfully."});
+    } catch(error) {
+        console.error(error);
+        toast({ variant: 'destructive', title: "Error", description: "Could not update user role." });
+    }
+  }
+
+  const handleBroadcastNotification = async (message: string, targetRole?: UserRole, targetUser?: string) => {
+     try {
+        await broadcastNotification({ message, targetRole, targetUser });
+        toast({ title: "Success", description: "Notification sent."});
+    } catch(error: any) {
+        console.error(error);
+        toast({ variant: 'destructive', title: "Error", description: error.message || "Could not send notification." });
+    }
+  }
+
   useEffect(() => {
     if (user) {
       getHomeworksForUser();
       fetchAnalytics();
       fetchPricingConfig();
+      fetchUserNotifications();
       if (user.role === 'super_worker') {
         fetchWorkersForSuperWorker(user.id).then(setWorkers);
       }
@@ -167,8 +211,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllUsers([]);
       setAnalyticsData(null);
       setPricingConfig(null);
+      setNotifications([]);
     }
-  }, [user, getHomeworksForUser, fetchAllCodes, fetchAnalytics, fetchPricingConfig]);
+  }, [user, getHomeworksForUser, fetchAllCodes, fetchAnalytics, fetchPricingConfig, fetchUserNotifications]);
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     try {
@@ -288,6 +333,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetchPricingConfig,
     handleSavePricingConfig,
     calculatePrice,
+    notifications,
+    handleBroadcastNotification,
+    handleUpdateUserRole,
   };
 
   return (

@@ -62,6 +62,15 @@ export interface Homework {
   }
 }
 
+export interface Notification {
+    id: number;
+    user_id: string;
+    message: string;
+    is_read: boolean;
+    created_at: Date;
+    homework_id: string | null;
+}
+
 export interface AnalyticsData {
   metric1: { month: string; value: number }[];
   metric2: { month: string; value: number }[];
