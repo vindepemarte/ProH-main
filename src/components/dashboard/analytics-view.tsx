@@ -146,7 +146,7 @@ export default function AnalyticsView() {
         metric2: 'metric2'
     }
 
-    const noData = chartData.every(d => d.metric1 === 0 && d.metric2 === 0);
+    const noData = !chartData || chartData.every(d => d.metric1 === 0 && d.metric2 === 0);
 
     return (
         <div className="p-4 space-y-4">
@@ -162,7 +162,7 @@ export default function AnalyticsView() {
                                 id="date"
                                 variant={"outline"}
                                 size="sm"
-                                className="w-[240px] justify-start text-left font-normal"
+                                className="w-full sm:w-[240px] justify-start text-left font-normal"
                                 >
                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                 {date?.from ? (
@@ -266,3 +266,5 @@ export default function AnalyticsView() {
         </div>
     )
 }
+
+    
