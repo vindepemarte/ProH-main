@@ -19,6 +19,7 @@ export default function Landing() {
           height={250} 
           className="mb-8 rounded-full shadow-2xl"
           data-ai-hint="happy students"
+          priority
         />
         <h1 className="text-4xl md:text-5xl font-extrabold font-headline text-primary tracking-tight">
           Streamline Your Success
