@@ -76,26 +76,25 @@ export default function AnalyticsView() {
     });
 
      const chartData = useMemo(() => {
-        if (!analyticsData || !date?.from || !date?.to) return [];
+        if (!analyticsData || (!analyticsData.metric1.length && !analyticsData.metric2.length) || !date?.from || !date?.to) {
+            return [];
+        }
 
         const isDailyView = differenceInDays(date.to, date.from) <= 31;
-        const combinedData = new Map<string, { name: string; metric1: number; metric2: number }>();
+        const dataMap1 = new Map(analyticsData.metric1.map(item => [item.date, item.value]));
+        const dataMap2 = new Map(analyticsData.metric2.map(item => [item.date, item.value]));
+        
+        const allDates = new Set([...dataMap1.keys(), ...dataMap2.keys()]);
+        const sortedDates = Array.from(allDates).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
 
-        analyticsData.metric1.forEach(item => {
-            const name = isDailyView ? format(new Date(item.date), 'MMM d') : format(new Date(item.date), 'MMM');
-            combinedData.set(item.date, { name, metric1: item.value, metric2: 0 });
-        });
-
-        analyticsData.metric2.forEach(item => {
-            const name = isDailyView ? format(new Date(item.date), 'MMM d') : format(new Date(item.date), 'MMM');
-            if (combinedData.has(item.date)) {
-                combinedData.get(item.date)!.metric2 = item.value;
-            } else {
-                combinedData.set(item.date, { name, metric1: 0, metric2: item.value });
+        return sortedDates.map(d => {
+             const name = isDailyView ? format(new Date(d), 'MMM d') : format(new Date(d), 'MMM');
+             return {
+                name,
+                metric1: dataMap1.get(d) || 0,
+                metric2: dataMap2.get(d) || 0,
             }
         });
-
-        return Array.from(combinedData.values());
 
     }, [analyticsData, date]);
     
@@ -253,5 +252,3 @@ export default function AnalyticsView() {
         </div>
     )
 }
-
-    
