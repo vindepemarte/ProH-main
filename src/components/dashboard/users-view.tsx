@@ -42,7 +42,7 @@ export default function UsersView() {
                     <TableCell>
                         <Badge variant="secondary" className="capitalize">{user.role.replace(/_/g, " ")}</Badge>
                     </TableCell>
-                    <TableCell>{user.referredBy ? user.referredBy.split('_')[0] : 'N/A'}</TableCell>
+                    <TableCell>{user.referredBy}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

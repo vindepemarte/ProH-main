@@ -1,0 +1,247 @@
+"use client"
+
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import * as z from "zod"
+import { format } from "date-fns"
+
+import { Button } from "@/components/ui/button"
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Calendar } from "@/components/ui/calendar"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useAppContext } from "@/contexts/app-context"
+import { cn } from "@/lib/utils"
+import { ProjectNumber } from "@/lib/types"
+import { CalendarIcon } from "lucide-react"
+
+const projectNumbers: { id: ProjectNumber; label: string }[] = [
+    { id: 'A1', label: 'Assignment 1' },
+    { id: 'A2', label: 'Assignment 2' },
+    { id: 'A3', label: 'Assignment 3' },
+    { id: 'A4', label: 'Assignment 4' },
+    { id: 'Full Project', label: 'Full Project' }
+]
+
+const homeworkFormSchema = z.object({
+  moduleName: z.string().min(3, { message: "Module name must be at least 3 characters." }),
+  projectNumber: z.array(z.string()).refine(value => value.some(item => item), {
+    message: "You have to select at least one project number.",
+  }),
+  wordCount: z.coerce.number().min(100, { message: "Word count must be at least 100." }),
+  deadline: z.date({ required_error: "A deadline is required." }),
+  notes: z.string().optional(),
+  files: z.any().optional(), // In a real app, use a file upload library schema
+})
+
+type HomeworkFormValues = z.infer<typeof homeworkFormSchema>
+
+interface NewHomeworkModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModalProps) {
+  const { submitHomework } = useAppContext();
+  
+  const form = useForm<HomeworkFormValues>({
+    resolver: zodResolver(homeworkFormSchema),
+    defaultValues: {
+      moduleName: "",
+      projectNumber: [],
+      wordCount: 1000,
+    },
+  })
+
+  async function onSubmit(data: HomeworkFormValues) {
+    // We'll add file upload logic later
+    await submitHomework({ ...data, files: [] });
+    form.reset();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-sm">
+        <DialogHeader>
+          <DialogTitle>Request New Homework</DialogTitle>
+          <DialogDescription>
+            Fill out the details below to submit a new assignment request.
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 flex-grow overflow-auto pr-6 -mr-6">
+            <FormField
+              control={form.control}
+              name="moduleName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Module Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g., Business Analytics" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="projectNumber"
+              render={() => (
+                <FormItem>
+                  <div className="mb-4">
+                    <FormLabel>Project Number</FormLabel>
+                    <FormDescription>
+                      Select all that apply.
+                    </FormDescription>
+                  </div>
+                  {projectNumbers.map((item) => (
+                    <FormField
+                      key={item.id}
+                      control={form.control}
+                      name="projectNumber"
+                      render={({ field }) => {
+                        return (
+                          <FormItem
+                            key={item.id}
+                            className="flex flex-row items-start space-x-3 space-y-0"
+                          >
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value?.includes(item.id)}
+                                onCheckedChange={(checked) => {
+                                  return checked
+                                    ? field.onChange([...field.value, item.id])
+                                    : field.onChange(
+                                        field.value?.filter(
+                                          (value) => value !== item.id
+                                        )
+                                      )
+                                }}
+                              />
+                            </FormControl>
+                            <FormLabel className="font-normal">
+                              {item.label}
+                            </FormLabel>
+                          </FormItem>
+                        )
+                      }}
+                    />
+                  ))}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="wordCount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Word Count</FormLabel>
+                  <FormControl>
+                    <Input type="number" placeholder="e.g., 1500" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="deadline"
+              render={({ field }) => (
+                <FormItem className="flex flex-col">
+                  <FormLabel>Deadline</FormLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full pl-3 text-left font-normal",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          {field.value ? (
+                            format(field.value, "PPP")
+                          ) : (
+                            <span>Pick a date</span>
+                          )}
+                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={field.onChange}
+                        disabled={(date) =>
+                          date < new Date() || date < new Date("1900-01-01")
+                        }
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notes for Worker</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Include any specific instructions, required sources, or formatting guidelines."
+                      className="resize-y"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="files"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Upload Files</FormLabel>
+                  <FormControl>
+                    <Input type="file" multiple {...field} />
+                  </FormControl>
+                  <FormDescription>
+                    Attach up to 20 files, max 50MB each.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+          <DialogFooter className="pt-4">
+            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit">Submit Homework</Button>
+          </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}

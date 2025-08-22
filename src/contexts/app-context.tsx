@@ -1,9 +1,9 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import type { User, Homework, HomeworkStatus, UserRole, ReferenceCode } from '@/lib/types';
+import type { User, Homework, HomeworkStatus, UserRole, ReferenceCode, AnalyticsData, ProjectNumber } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
-import { fetchUsers, authenticateUser, createUser, fetchHomeworksForUser, modifyHomework, fetchWorkersForSuperWorker, fetchReferenceCodesForUser } from '@/lib/actions';
+import { fetchUsers, authenticateUser, createUser, fetchHomeworksForUser, modifyHomework, fetchWorkersForSuperWorker, fetchReferenceCodesForUser, createHomework, getAnalyticsForUser } from '@/lib/actions';
 
 interface AppContextType {
   user: User | null;
@@ -20,15 +20,26 @@ interface AppContextType {
   homeworks: Homework[];
   getHomeworksForUser: () => void;
   updateHomework: (id: string, updates: Partial<Homework>) => Promise<void>;
-  
+  submitHomework: (data: {
+        moduleName: string;
+        projectNumber: ProjectNumber[];
+        wordCount: number;
+        deadline: Date;
+        notes: string;
+        files: { name: string; url: string }[];
+    }) => Promise<void>;
+
   selectedHomework: Homework | null;
   setSelectedHomework: (homework: Homework | null) => void;
   isHomeworkModalOpen: boolean;
   setIsHomeworkModalOpen: (open: boolean) => void;
+  isNewHomeworkModalOpen: boolean;
+  setIsNewHomeworkModalOpen: (open: boolean) => void;
 
   workers: User[];
   referenceCodes: ReferenceCode[];
   getReferenceCodesForUser: () => void;
+  analyticsData: AnalyticsData | null;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -42,9 +53,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [isHomeworkModalOpen, setIsHomeworkModalOpen] = useState(false);
+  const [isNewHomeworkModalOpen, setIsNewHomeworkModalOpen] = useState(false);
   const [selectedHomework, setSelectedHomework] = useState<Homework | null>(null);
   const [workers, setWorkers] = useState<User[]>([]);
   const [referenceCodes, setReferenceCodes] = useState<ReferenceCode[]>([]);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
 
   const getHomeworksForUser = useCallback(async () => {
     if (!user) return;
@@ -67,10 +80,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
        toast({ variant: 'destructive', title: "Error", description: "Could not fetch reference codes." });
     }
   }, [user, toast]);
+  
+  const fetchAnalytics = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await getAnalyticsForUser(user);
+      setAnalyticsData(data);
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: "Could not fetch analytics data." });
+    }
+  }, [user, toast]);
 
   useEffect(() => {
     if (user) {
       getHomeworksForUser();
+      fetchAnalytics();
       if (user.role === 'super_worker') {
         fetchWorkersForSuperWorker(user.id).then(setWorkers);
       }
@@ -85,8 +110,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setWorkers([]);
       setReferenceCodes([]);
       setAllUsers([]);
+      setAnalyticsData(null);
     }
-  }, [user, getHomeworksForUser, getReferenceCodesForUser]);
+  }, [user, getHomeworksForUser, getReferenceCodesForUser, fetchAnalytics]);
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     try {
@@ -133,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateHomework = async (id: string, updates: Partial<Homework>) => {
     try {
         await modifyHomework(id, updates);
-        getHomeworksForUser(); // Refresh homeworks list
+        await getHomeworksForUser(); // Refresh homeworks list
         
         if (selectedHomework && selectedHomework.id === id) {
             setSelectedHomework({ ...selectedHomework, ...updates });
@@ -143,6 +169,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.error(error);
         toast({ variant: 'destructive', title: "Error", description: "Could not update homework." });
     }
+  }
+
+  const submitHomework = async (data: {
+        moduleName: string;
+        projectNumber: ProjectNumber[];
+        wordCount: number;
+        deadline: Date;
+        notes: string;
+        files: { name: string; url: string }[];
+    }) => {
+      if(!user) return;
+      try {
+        await createHomework(user, data);
+        await getHomeworksForUser();
+        setIsNewHomeworkModalOpen(false);
+        toast({ title: "Homework Submitted", description: "Your homework has been submitted for approval." });
+      } catch (error) {
+        console.error(error);
+        toast({ variant: 'destructive', title: "Submission Error", description: "Could not submit your homework." });
+      }
   }
 
   const value = {
@@ -158,13 +204,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     homeworks,
     getHomeworksForUser,
     updateHomework,
+    submitHomework,
     selectedHomework,
     setSelectedHomework,
     isHomeworkModalOpen,
     setIsHomeworkModalOpen,
+    isNewHomeworkModalOpen,
+    setIsNewHomeworkModalOpen,
     workers,
     referenceCodes,
-    getReferenceCodesForUser
+    getReferenceCodesForUser,
+    analyticsData,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -61,3 +61,8 @@ export interface Homework {
     profit: number;
   }
 }
+
+export interface AnalyticsData {
+  metric1: { month: string; value: number }[];
+  metric2: { month: string; value: number }[];
+}

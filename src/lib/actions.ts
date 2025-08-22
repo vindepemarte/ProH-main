@@ -1,7 +1,7 @@
 'use server';
 
 import { pool } from './db';
-import { User, Homework, HomeworkStatus, UserRole, ReferenceCode } from './types';
+import type { User, Homework, HomeworkStatus, UserRole, ReferenceCode, ProjectNumber, AnalyticsData } from './types';
 
 // Simple password hashing for dummy data
 const hash = (pwd: string) => `hashed_${pwd}`;
@@ -10,12 +10,22 @@ const compare = (pwd: string, hashed: string) => hash(pwd) === hashed;
 export async function fetchUsers(): Promise<User[]> {
     const client = await pool.connect();
     try {
-        const res = await client.query('SELECT id, name, email, role, referred_by FROM users ORDER BY name');
-        return res.rows;
+        const res = await client.query(`
+            SELECT u.id, u.name, u.email, u.role, r.name as referred_by_name
+            FROM users u
+            LEFT JOIN users r ON u.referred_by = r.id
+            ORDER BY u.name
+        `);
+        // Map 'referred_by_name' to 'referredBy' to match the User type
+        return res.rows.map(row => ({
+            ...row,
+            referredBy: row.referred_by_name || 'N/A', // Use the name, or N/A
+        }));
     } finally {
         client.release();
     }
 }
+
 
 export async function authenticateUser(email: string, pass: string): Promise<User | null> {
     const client = await pool.connect();
@@ -50,9 +60,9 @@ export async function createUser(name: string, email: string, pass: string, refC
         if (emailRes.rows.length > 0) {
             throw new Error("Email already in use.");
         }
-
+        
         const newUserId = `user_${Date.now()}`;
-        const newUser: Omit<User, 'id' | 'referenceCode'> = {
+        const newUser: Omit<User, 'id' | 'referenceCode'> & { password_hash: string } = {
             name,
             email: email.toLowerCase(),
             password_hash: hash(pass),
@@ -95,9 +105,9 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
             params.push(user.id);
             break;
         case 'super_worker':
-            query += ` WHERE h.status = ANY($1::homework_status[]) OR h.super_worker_id = $2`;
-            params.push(['in_progress', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed']);
+            query += ` WHERE h.super_worker_id = $1 OR h.status = ANY($2::homework_status[])`;
             params.push(user.id);
+            params.push(['in_progress', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed']);
             break;
         case 'worker':
             query += ' WHERE h.worker_id = $1';
@@ -164,6 +174,96 @@ export async function fetchReferenceCodesForUser(userId: string): Promise<Refere
     try {
         const res = await client.query("SELECT * FROM reference_codes WHERE owner_id = $1", [userId]);
         return res.rows;
+    } finally {
+        client.release();
+    }
+}
+
+export async function createHomework(
+    student: User,
+    data: {
+        moduleName: string;
+        projectNumber: ProjectNumber[];
+        wordCount: number;
+        deadline: Date;
+        notes: string;
+        files: { name: string; url: string }[];
+    }
+): Promise<Homework> {
+    const client = await pool.connect();
+    
+    // Simplified logic for agent and pricing
+    const agentId = student.referredBy; // This might need more complex logic
+    const price = data.wordCount * 0.10; // Dummy price logic
+
+    const newHomework: Omit<Homework, 'id' | 'status' | 'earnings'> = {
+        studentId: student.id,
+        agentId: agentId,
+        moduleName: data.moduleName,
+        projectNumber: data.projectNumber,
+        wordCount: data.wordCount,
+        deadline: data.deadline,
+        notes: data.notes,
+        files: data.files,
+        price: price,
+    };
+    
+    const homeworkId = `hw_${Date.now()}`;
+
+    try {
+        const res = await client.query(
+            `INSERT INTO homeworks 
+            (id, student_id, agent_id, status, module_name, project_number, word_count, deadline, notes, files, price) 
+            VALUES ($1, $2, $3, 'payment_approval', $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+            [homeworkId, newHomework.studentId, newHomework.agentId, newHomework.moduleName, newHomework.projectNumber, newHomework.wordCount, newHomework.deadline, newHomework.notes, JSON.stringify(newHomework.files), newHomework.price]
+        );
+        return res.rows[0];
+    } finally {
+        client.release();
+    }
+}
+
+export async function getAnalyticsForUser(user: User): Promise<AnalyticsData> {
+    const client = await pool.connect();
+    try {
+        let metric1Query = '';
+        let metric2Query = '';
+        const params = [user.id];
+
+        switch(user.role) {
+            case 'student':
+                metric1Query = `SELECT TO_CHAR(deadline, 'Mon') as month, SUM(price) as value FROM homeworks WHERE student_id = $1 AND status = 'completed' GROUP BY month ORDER BY month;`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'Mon') as month, COUNT(*) as value FROM homeworks WHERE student_id = $1 AND status = 'completed' GROUP BY month ORDER BY month;`;
+                break;
+            case 'agent':
+                // Simplified earnings logic
+                metric1Query = `SELECT TO_CHAR(deadline, 'Mon') as month, SUM(price * 0.1) as value FROM homeworks WHERE agent_id = $1 AND status = 'completed' GROUP BY month ORDER BY month;`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'Mon') as month, COUNT(*) as value FROM homeworks WHERE agent_id = $1 GROUP BY month ORDER BY month;`;
+                break;
+            case 'super_worker':
+                // Simplified earnings logic
+                metric1Query = `SELECT TO_CHAR(deadline, 'Mon') as month, SUM(price * 0.2) as value FROM homeworks WHERE super_worker_id = $1 AND status = 'completed' GROUP BY month ORDER BY month;`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'Mon') as month, COUNT(*) as value FROM homeworks WHERE super_worker_id = $1 GROUP BY month ORDER BY month;`;
+                break;
+            case 'super_agent':
+                 // Simplified earnings logic
+                metric1Query = `SELECT TO_CHAR(deadline, 'Mon') as month, SUM(price * 0.7) as value FROM homeworks WHERE status = 'completed' GROUP BY month ORDER BY month;`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'Mon') as month, COUNT(*) as value FROM homeworks GROUP BY month ORDER BY month;`;
+                break;
+            default:
+                 return { metric1: [], metric2: [] };
+        }
+
+        const [metric1Res, metric2Res] = await Promise.all([
+             client.query(metric1Query, user.role === 'super_agent' ? [] : params),
+             client.query(metric2Query, user.role === 'super_agent' ? [] : params)
+        ]);
+
+        return {
+            metric1: metric1Res.rows,
+            metric2: metric2Res.rows,
+        };
+
     } finally {
         client.release();
     }
