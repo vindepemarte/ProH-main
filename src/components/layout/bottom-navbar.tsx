@@ -14,7 +14,7 @@ export default function BottomNavbar() {
       <div className="flex items-center justify-around w-full max-w-sm">
         <div className="absolute left-1/2 -translate-x-1/2">
             <Button variant="ghost" size="icon" className="w-20 h-20 rounded-full bg-background border-2 border-accent shadow-lg -translate-y-8 flex items-center justify-center hover:bg-accent/10">
-                <Image src="/logo.png" alt="Home" width={48} height={48} />
+                <Image src="/logo.png" alt="Home" width={48} height={48} key={user ? 'user-logo' : 'guest-logo'} />
             </Button>
         </div>
         
