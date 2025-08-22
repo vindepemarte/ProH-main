@@ -118,12 +118,12 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         <div className="p-4 bg-primary/10 rounded-lg space-y-2 mt-4">
                             <h3 className="font-bold">Financials</h3>
                             <p>Revenue: £{hw.earnings.total.toFixed(2)}</p>
-                            {hw.earnings.agent && <p>Agent Pay: £{hw.earnings.agent.toFixed(2)}</p>}
+                            {hw.earnings.agent && hw.earnings.agent > 0 && <p>Agent Pay: £{hw.earnings.agent.toFixed(2)}</p>}
                             {hw.earnings.super_worker && <p>S.Worker Pay: £{hw.earnings.super_worker.toFixed(2)}</p>}
                             {hw.status === 'completed' && hw.earnings.profit > 0 && <p className="font-semibold">Profit: £{hw.earnings.profit.toFixed(2)}</p>}
                         </div>
                     )}
-                    {user.role === 'agent' && hw.earnings?.agent && (
+                    {user.role === 'agent' && hw.earnings?.agent && hw.earnings.agent > 0 && (
                          <div className="p-4 bg-primary/10 rounded-lg space-y-2 mt-4">
                             <h3 className="font-bold">Your Earnings</h3>
                             <p>Profit: £{hw.earnings.agent.toFixed(2)}</p>
