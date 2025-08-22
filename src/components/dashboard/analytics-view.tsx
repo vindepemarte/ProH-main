@@ -2,16 +2,18 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAppContext } from "@/contexts/app-context";
 import { useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import { CalendarIcon, TrendingUp, Users, Wallet, Target } from "lucide-react";
+import { CalendarIcon, TrendingUp, Users, Wallet, Target, Search } from "lucide-react";
 import { Calendar } from "../ui/calendar";
 import { DateRange } from "react-day-picker";
 import { addDays, format, differenceInDays } from "date-fns";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Input } from "../ui/input";
+import { ScrollArea } from "../ui/scroll-area";
 
 function SuperAgentKPIs() {
     const { superAgentStats } = useAppContext();
@@ -44,6 +46,16 @@ function SuperAgentKPIs() {
 
 function StudentsPerAgentTable() {
     const { superAgentStats } = useAppContext();
+    const [searchTerm, setSearchTerm] = useState("");
+
+    const filteredAgents = useMemo(() => {
+        if (!superAgentStats || !superAgentStats.studentsPerAgent) return [];
+        if (!searchTerm) return superAgentStats.studentsPerAgent;
+        return superAgentStats.studentsPerAgent.filter(agent =>
+            agent.agentName.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [superAgentStats, searchTerm]);
+
     if (!superAgentStats || !superAgentStats.studentsPerAgent) return null;
     
     return (
@@ -53,15 +65,39 @@ function StudentsPerAgentTable() {
                 <CardDescription>Breakdown of students referred by each agent.</CardDescription>
             </CardHeader>
             <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={superAgentStats.studentsPerAgent}>
-                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="agentName" angle={-45} textAnchor="end" height={80} interval={0} />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip />
-                        <Bar dataKey="studentCount" fill="hsl(var(--primary))" name="Students" />
-                    </BarChart>
-                </ResponsiveContainer>
+                <div className="relative mb-4">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="Filter agents..." 
+                        className="pl-8" 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <ScrollArea className="h-72">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Agent Name</TableHead>
+                                <TableHead className="text-right">Student Count</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {filteredAgents.length > 0 ? filteredAgents.map(agent => (
+                                <TableRow key={agent.agentName}>
+                                    <TableCell className="font-medium">{agent.agentName}</TableCell>
+                                    <TableCell className="text-right">{agent.studentCount}</TableCell>
+                                </TableRow>
+                            )) : (
+                                <TableRow>
+                                    <TableCell colSpan={2} className="text-center text-muted-foreground">
+                                        No agents found.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </ScrollArea>
             </CardContent>
         </Card>
     )
@@ -75,37 +111,37 @@ export default function AnalyticsView() {
         to: new Date(),
     });
 
-     const chartData = useMemo(() => {
+    const chartData = useMemo(() => {
         if (!analyticsData || (!analyticsData.metric1.length && !analyticsData.metric2.length)) {
             return [];
         }
 
-        const isDailyView = differenceInDays(date?.to || new Date(), date?.from || new Date()) <= 31;
-
-        const combinedData = new Map<string, { metric1: number; metric2: number }>();
+        const isDailyView = differenceInDays(date?.to || new Date(), date?.from || new Date()) < 31;
+        
+        const combinedDataMap = new Map<string, { metric1: number; metric2: number }>();
 
         analyticsData.metric1.forEach(item => {
-            combinedData.set(item.date, { metric1: item.value, metric2: 0 });
+            combinedDataMap.set(item.date, { metric1: item.value, metric2: 0 });
         });
 
         analyticsData.metric2.forEach(item => {
-            if (combinedData.has(item.date)) {
-                combinedData.get(item.date)!.metric2 = item.value;
+            if (combinedDataMap.has(item.date)) {
+                combinedDataMap.get(item.date)!.metric2 = item.value;
             } else {
-                combinedData.set(item.date, { metric1: 0, metric2: item.value });
+                combinedDataMap.set(item.date, { metric1: 0, metric2: item.value });
             }
         });
-        
-        const sortedDates = Array.from(combinedData.keys()).sort();
+
+        const sortedDates = Array.from(combinedDataMap.keys()).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
         return sortedDates.map(d => {
-             const name = isDailyView ? format(new Date(d), 'MMM d') : format(new Date(d), 'MMM');
-             const dataPoint = combinedData.get(d)!;
-             return {
+            const name = isDailyView ? format(new Date(d), 'MMM d') : format(new Date(d), 'MMM');
+            const dataPoint = combinedDataMap.get(d)!;
+            return {
                 name,
                 metric1: dataPoint.metric1,
                 metric2: dataPoint.metric2,
-            }
+            };
         });
 
     }, [analyticsData, date]);
@@ -118,8 +154,8 @@ export default function AnalyticsView() {
     }
     
      const setPresetRange = (days: number) => {
-        const from = addDays(new Date(), -days);
         const to = new Date();
+        const from = addDays(new Date(), -days);
         setDate({ from, to });
         setAnalyticsDateRange({ from, to });
     };
@@ -264,3 +300,5 @@ export default function AnalyticsView() {
         </div>
     )
 }
+
+    
