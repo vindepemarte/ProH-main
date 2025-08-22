@@ -1,4 +1,4 @@
--- Users Table
+-- Users Table: Stores all user information
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(255) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -8,14 +8,14 @@ CREATE TABLE IF NOT EXISTS users (
     referred_by VARCHAR(255) REFERENCES users(id)
 );
 
--- Reference Codes Table
+-- Reference Codes Table: Stores codes for registration
 CREATE TABLE IF NOT EXISTS reference_codes (
     code VARCHAR(255) PRIMARY KEY,
     owner_id VARCHAR(255) REFERENCES users(id),
     role VARCHAR(50) NOT NULL
 );
 
--- Homeworks Table
+-- Homeworks Table: Core table for all assignment data
 CREATE TABLE IF NOT EXISTS homeworks (
     id VARCHAR(255) PRIMARY KEY,
     student_id VARCHAR(255) REFERENCES users(id),
@@ -24,23 +24,24 @@ CREATE TABLE IF NOT EXISTS homeworks (
     super_worker_id VARCHAR(255) REFERENCES users(id),
     status VARCHAR(50) NOT NULL,
     module_name VARCHAR(255) NOT NULL,
-    project_number TEXT[] NOT NULL,
-    word_count INT NOT NULL,
+    project_number VARCHAR(255)[],
+    word_count INTEGER NOT NULL,
     deadline TIMESTAMP NOT NULL,
     notes TEXT,
     price NUMERIC(10, 2),
-    earnings JSONB -- { total, agent, super_worker, profit }
+    earnings JSONB
 );
 
--- Homework Files Table
+-- Homework Files Table: Stores file info related to homeworks
 CREATE TABLE IF NOT EXISTS homework_files (
     id SERIAL PRIMARY KEY,
     homework_id VARCHAR(255) REFERENCES homeworks(id),
     file_name VARCHAR(255) NOT NULL,
-    file_url VARCHAR(255) NOT NULL
+    file_url TEXT,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Notifications Table
+-- Notifications Table: Stores user notifications
 CREATE TABLE IF NOT EXISTS notifications (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(255),
@@ -56,7 +57,7 @@ CREATE TABLE IF NOT EXISTS pricing_config (
     config JSONB NOT NULL
 );
 
--- Super Agent Stats Table
+-- Super Agent Dashboard Stats Table
 CREATE TABLE IF NOT EXISTS super_agent_stats (
     id INT PRIMARY KEY,
     total_revenue NUMERIC(15, 2) DEFAULT 0,
@@ -67,25 +68,25 @@ CREATE TABLE IF NOT EXISTS super_agent_stats (
 );
 
 
--- Seed initial data only if it doesn't exist
-INSERT INTO users (id, name, email, password_hash, role)
-VALUES ('god', 'God', 'god@prohappy.app', 'hashed_123456', 'super_agent')
-ON CONFLICT (email) DO NOTHING;
+-- SEED DATA --
 
-INSERT INTO reference_codes (code, owner_id, role)
-VALUES ('GODZ', 'god', 'super_agent')
-ON CONFLICT (code) DO NOTHING;
+-- Insert default user on conflict (if email exists, do nothing)
+INSERT INTO users (id, name, email, password_hash, role) VALUES ('user_god', 'God', 'god@prohappy.app', 'hashed_123456', 'super_agent') ON CONFLICT (email) DO NOTHING;
 
-INSERT INTO pricing_config (id, config)
-VALUES ('main', '{
+-- Insert default reference code on conflict
+INSERT INTO reference_codes (code, owner_id, role) VALUES ('GODZ', 'user_god', 'super_agent') ON CONFLICT (code) DO NOTHING;
+
+-- Insert default pricing config on conflict
+INSERT INTO pricing_config (id, config) VALUES ('main', '{
     "wordTiers": {
-        "500": 10, "1000": 20, "1500": 30, "2000": 40, "2500": 50, "3000": 60,
-        "3500": 70, "4000": 80, "4500": 90, "5000": 100, "5500": 110, "6000": 120,
-        "6500": 130, "7000": 140, "7500": 150, "8000": 160, "8500": 170, "9000": 180,
-        "9500": 190, "10000": 200, "10500": 210, "11000": 220, "11500": 230, "12000": 240,
-        "12500": 250, "13000": 260, "13500": 270, "14000": 280, "14500": 290, "15000": 300,
-        "15500": 310, "16000": 320, "16500": 330, "17000": 340, "17500": 350, "18000": 360,
-        "18500": 370, "19000": 380, "19500": 390, "20000": 400
+        "500": 20, "1000": 40, "1500": 60, "2000": 80, "2500": 100,
+        "3000": 120, "3500": 140, "4000": 160, "4500": 180, "5000": 200,
+        "5500": 220, "6000": 240, "6500": 260, "7000": 280, "7500": 300,
+        "8000": 320, "8500": 340, "9000": 360, "9500": 380, "10000": 400,
+        "10500": 420, "11000": 440, "11500": 460, "12000": 480, "12500": 500,
+        "13000": 520, "13500": 540, "14000": 560, "14500": 580, "15000": 600,
+        "15500": 620, "16000": 640, "16500": 660, "17000": 680, "17500": 700,
+        "18000": 720, "18500": 740, "19000": 760, "19500": 780, "20000": 800
     },
     "fees": {
         "agent": 5,
@@ -96,10 +97,4 @@ VALUES ('main', '{
         "3": 15,
         "7": 5
     }
-}')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO super_agent_stats (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
-
-
-    
+}') ON CONFLICT (id) DO NOTHING;

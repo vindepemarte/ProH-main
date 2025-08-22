@@ -595,5 +595,3 @@ export async function markNotificationsAsRead(userId: string): Promise<void> {
         client.release();
     }
 }
-
-    
