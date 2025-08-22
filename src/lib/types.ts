@@ -76,6 +76,19 @@ export interface AnalyticsData {
   metric2: { month: string; value: number }[];
 }
 
+export interface StudentsPerAgent {
+  agentName: string;
+  studentCount: number;
+}
+
+export interface SuperAgentDashboardStats {
+    totalRevenue: number;
+    totalProfit: number;
+    totalStudents: number;
+    averageProfitPerHomework: number;
+    studentsPerAgent: StudentsPerAgent[];
+}
+
 export interface WordTier {
     [key: number]: number;
 }
@@ -94,3 +107,5 @@ export interface PricingConfig {
     fees: FeeTier;
     deadlineTiers: DeadlineTier;
 }
+
+    

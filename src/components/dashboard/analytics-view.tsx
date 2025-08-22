@@ -1,14 +1,80 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useAppContext } from "@/contexts/app-context";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { CalendarIcon, TrendingUp, Users, Wallet, Target } from "lucide-react";
+import { Calendar } from "../ui/calendar";
+import { DateRange } from "react-day-picker";
+import { addDays, format } from "date-fns";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
 const allMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+function SuperAgentKPIs() {
+    const { superAgentStats } = useAppContext();
+
+    if (!superAgentStats) return null;
+    
+    const kpis = [
+        { title: "Total Revenue", value: `£${superAgentStats.totalRevenue.toFixed(2)}`, icon: Wallet },
+        { title: "Total Profit", value: `£${superAgentStats.totalProfit.toFixed(2)}`, icon: TrendingUp },
+        { title: "Total Students", value: superAgentStats.totalStudents, icon: Users },
+        { title: "Avg. Profit/Homework", value: `£${superAgentStats.averageProfitPerHomework.toFixed(2)}`, icon: Target },
+    ]
+
+    return (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+            {kpis.map(kpi => (
+                <Card key={kpi.title}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">{kpi.title}</CardTitle>
+                        <kpi.icon className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{kpi.value}</div>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    )
+}
+
+function StudentsPerAgentTable() {
+    const { superAgentStats } = useAppContext();
+    if (!superAgentStats || !superAgentStats.studentsPerAgent) return null;
+    
+    return (
+        <Card className="mt-6">
+            <CardHeader>
+                <CardTitle>Students per Agent</CardTitle>
+                <CardDescription>Breakdown of students referred by each agent.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={superAgentStats.studentsPerAgent}>
+                         <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="agentName" angle={-45} textAnchor="end" height={80} interval={0} />
+                        <YAxis allowDecimals={false} />
+                        <Tooltip />
+                        <Bar dataKey="studentCount" fill="hsl(var(--primary))" name="Students" />
+                    </BarChart>
+                </ResponsiveContainer>
+            </CardContent>
+        </Card>
+    )
+}
+
+
 export default function AnalyticsView() {
-    const { user, analyticsData } = useAppContext();
+    const { user, analyticsData, setAnalyticsDateRange, superAgentStats } = useAppContext();
+    const [date, setDate] = useState<DateRange | undefined>({
+        from: addDays(new Date(), -30),
+        to: new Date(),
+    });
 
     const chartData = useMemo(() => {
         if (!analyticsData) return [];
@@ -22,6 +88,21 @@ export default function AnalyticsView() {
             metric2: dataMap2.get(month) || 0,
         }));
     }, [analyticsData]);
+    
+    const handleDateRangeChange = (range: DateRange | undefined) => {
+        if(range?.from && range?.to) {
+            setDate(range);
+            setAnalyticsDateRange(range);
+        }
+    }
+    
+     const setPresetRange = (days: number) => {
+        const from = addDays(new Date(), -days);
+        const to = new Date();
+        setDate({ from, to });
+        setAnalyticsDateRange({ from, to });
+    };
+
 
     if (!user) return null;
 
@@ -44,11 +125,55 @@ export default function AnalyticsView() {
 
     return (
         <div className="p-4 space-y-4">
-            <h2 className="text-2xl font-bold">Analytics</h2>
+            <div className="flex justify-between items-center">
+                 <h2 className="text-2xl font-bold">Analytics</h2>
+                 <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setPresetRange(0)}>Today</Button>
+                    <Button variant="outline" size="sm" onClick={() => setPresetRange(7)}>Last 7 Days</Button>
+                    <Button variant="outline" size="sm" onClick={() => setPresetRange(30)}>Last 30 Days</Button>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button
+                                id="date"
+                                variant={"outline"}
+                                size="sm"
+                                className="w-[240px] justify-start text-left font-normal"
+                                >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {date?.from ? (
+                                    date.to ? (
+                                    <>
+                                        {format(date.from, "LLL dd, y")} -{" "}
+                                        {format(date.to, "LLL dd, y")}
+                                    </>
+                                    ) : (
+                                    format(date.from, "LLL dd, y")
+                                    )
+                                ) : (
+                                    <span>Pick a date</span>
+                                )}
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                            <Calendar
+                                initialFocus
+                                mode="range"
+                                defaultMonth={date?.from}
+                                selected={date}
+                                onSelect={handleDateRangeChange}
+                                numberOfMonths={2}
+                            />
+                        </PopoverContent>
+                    </Popover>
+                 </div>
+            </div>
+            
+            {user.role === 'super_agent' && <SuperAgentKPIs />}
+
             {chartData.length === 0 ? (
                 <Card>
                     <CardContent className="pt-6">
-                        <p className="text-muted-foreground text-center">No analytics data available yet.</p>
+                        <p className="text-muted-foreground text-center">No analytics data available yet for the selected period.</p>
                     </CardContent>
                 </Card>
             ) : (
@@ -112,6 +237,9 @@ export default function AnalyticsView() {
                     </Card>
                 </div>
             )}
+             {user.role === 'super_agent' && <StudentsPerAgentTable />}
         </div>
     )
 }
+
+    

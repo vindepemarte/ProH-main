@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useAppContext } from "@/contexts/app-context"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ScrollArea } from "../ui/scroll-area"
-import type { PricingConfig } from "@/lib/types"
+import type { PricingConfig, UserRole } from "@/lib/types"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 
 function ReferenceCodeManager() {
     const { referenceCodes, fetchAllCodes, handleUpdateReferenceCode } = useAppContext();
@@ -46,6 +47,83 @@ function ReferenceCodeManager() {
              </div>
          )
      }).filter(Boolean);
+}
+
+function CreateReferenceCode() {
+    const { allUsers, handleCreateReferenceCode } = useAppContext();
+    const [code, setCode] = useState('');
+    const [role, setRole] = useState<UserRole>('student');
+    const [ownerId, setOwnerId] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredUsers = useMemo(() => {
+        if (!searchTerm) return allUsers;
+        return allUsers.filter(u => 
+            u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            u.email.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [allUsers, searchTerm]);
+    
+    const handleCreate = () => {
+        if (code && role && ownerId) {
+            handleCreateReferenceCode(code, role, ownerId);
+            setCode('');
+            setRole('student');
+            setOwnerId('');
+        }
+    }
+
+    return (
+         <Card>
+            <CardHeader>
+                <CardTitle>Create New Reference Code</CardTitle>
+                <CardDescription>Create a new reference code and assign it to a user.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>New Code</Label>
+                        <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. AGENT01" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Grants Role</Label>
+                        <Select value={role} onValueChange={(v: UserRole) => setRole(v)}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="student">Student</SelectItem>
+                                <SelectItem value="agent">Agent</SelectItem>
+                                <SelectItem value="worker">Worker</SelectItem>
+                                <SelectItem value="super_worker">Super Worker</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                 <div className="space-y-2">
+                    <Label>Owner</Label>
+                     <Select value={ownerId} onValueChange={setOwnerId}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a user..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                                <div className="p-2">
+                                <Input
+                                placeholder="Search users..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                            <ScrollArea className="h-48">
+                            {filteredUsers.map(u => (
+                                <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>
+                            ))}
+                            </ScrollArea>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <Button onClick={handleCreate} disabled={!code || !role || !ownerId}>Create Code</Button>
+            </CardContent>
+        </Card>
+    )
 }
 
 
@@ -150,8 +228,11 @@ export default function SettingsView() {
                         <ReferenceCodeManager />
                     </CardContent>
                 </Card>
+                <CreateReferenceCode />
                 </>
             )}
         </div>
     )
 }
+
+    

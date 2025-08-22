@@ -1,8 +1,8 @@
 'use server';
 
 import { pool } from './db';
-import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole } from './types';
-import { differenceInDays } from 'date-fns';
+import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, StudentsPerAgent } from './types';
+import { differenceInDays, format } from 'date-fns';
 
 // Simple password hashing for dummy data
 const hash = (pwd: string) => `hashed_${pwd}`;
@@ -252,6 +252,23 @@ export async function updateReferenceCode(oldCode: string, newCode: string): Pro
     }
 }
 
+export async function createReferenceCode(code: string, role: UserRole, ownerId: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query(
+            "INSERT INTO reference_codes (code, role, owner_id) VALUES ($1, $2, $3)",
+            [code.toUpperCase(), role, ownerId]
+        );
+    } catch (error: any) {
+        if (error.code === '23505') { // Unique violation
+            throw new Error(`Reference code "${code.toUpperCase()}" already exists.`);
+        }
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
 
 export async function createHomework(
     student: User,
@@ -346,31 +363,37 @@ export async function createHomework(
     }
 }
 
-export async function getAnalyticsForUser(user: User): Promise<AnalyticsData> {
+export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): Promise<AnalyticsData> {
     const client = await pool.connect();
+    
+    const fromDate = from ? format(from, 'yyyy-MM-dd') : '1970-01-01';
+    const toDate = to ? format(to, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+    
     try {
         let metric1Query = '';
         let metric2Query = '';
-        const params: string[] = [user.id];
+        const params: string[] = [user.id, fromDate, toDate];
+
+        const dateFilter = ` AND deadline BETWEEN $2 AND $3`;
 
         switch(user.role) {
             case 'student':
-                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM(price) as value FROM homeworks WHERE student_id = $1 AND status = 'completed' GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE student_id = $1 GROUP BY 1 ORDER BY 1`;
+                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM(price) as value FROM homeworks WHERE student_id = $1 AND status = 'completed' ${dateFilter} GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE student_id = $1 ${dateFilter} GROUP BY 1 ORDER BY 1`;
                 break;
             case 'agent':
-                metric1Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 AND h.status = 'completed' GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 GROUP BY 1 ORDER BY 1`;
+                metric1Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 AND h.status = 'completed' ${dateFilter} GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 ${dateFilter} GROUP BY 1 ORDER BY 1`;
                 break;
             case 'super_worker':
-                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status = 'completed' GROUP BY 1 ORDER BY 1`;
-                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks GROUP BY 1 ORDER BY 1`;
-                 params.pop();
+                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter.replace(/\$2/g, '$1').replace(/\$3/g, '$2')} GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter.replace(/\$2/g, '$1').replace(/\$3/g, '$2')} GROUP BY 1 ORDER BY 1`;
+                params.shift();
                 break;
             case 'super_agent':
-                 metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'profit')::numeric) as value FROM homeworks WHERE status = 'completed' GROUP BY 1 ORDER BY 1`;
-                 metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks GROUP BY 1 ORDER BY 1`;
-                 params.pop(); // No user id needed for super agent
+                 metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'profit')::numeric) as value FROM homeworks WHERE status = 'completed' ${dateFilter.replace(/\$2/g, '$1').replace(/\$3/g, '$2')} GROUP BY 1 ORDER BY 1`;
+                 metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter.replace(/\$2/g, '$1').replace(/\$3/g, '$2')} GROUP BY 1 ORDER BY 1`;
+                 params.shift(); // No user id needed for super agent
                  break;
             default:
                  return { metric1: [], metric2: [] };
@@ -398,6 +421,58 @@ export async function getAnalyticsForUser(user: User): Promise<AnalyticsData> {
         client.release();
     }
 }
+
+export async function getSuperAgentDashboardStats(): Promise<SuperAgentDashboardStats> {
+    const client = await pool.connect();
+    try {
+        const statsRes = await client.query("SELECT * FROM super_agent_stats LIMIT 1");
+        if(statsRes.rows.length === 0) {
+            // Calculate and insert if not present
+            const calcRes = await client.query(`
+                SELECT 
+                    COALESCE(SUM(price), 0) as "totalRevenue",
+                    COALESCE(SUM((earnings->>'profit')::numeric), 0) as "totalProfit"
+                FROM homeworks WHERE status = 'completed'
+            `);
+            const studentRes = await client.query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
+            
+            const { totalRevenue, totalProfit } = calcRes.rows[0];
+            const totalStudents = parseInt(studentRes.rows[0].count);
+            const homeworkCount = (await client.query("SELECT COUNT(*) FROM homeworks WHERE status = 'completed'")).rows[0].count;
+            const averageProfitPerHomework = homeworkCount > 0 ? totalProfit / homeworkCount : 0;
+            
+             await client.query(`
+                INSERT INTO super_agent_stats (id, total_revenue, total_profit, total_students, average_profit_per_homework, last_updated)
+                VALUES (1, $1, $2, $3, $4, NOW())
+                ON CONFLICT (id) DO UPDATE SET
+                    total_revenue = $1, total_profit = $2, total_students = $3, average_profit_per_homework = $4, last_updated = NOW();
+            `, [totalRevenue, totalProfit, totalStudents, averageProfitPerHomework]);
+            
+            return { totalRevenue, totalProfit, totalStudents, averageProfitPerHomework, studentsPerAgent: [] };
+        }
+
+        const agentStudentsRes = await client.query<StudentsPerAgent>(`
+            SELECT u.name as "agentName", COUNT(s.id) as "studentCount"
+            FROM users u
+            JOIN users s ON s.referred_by = u.id
+            WHERE u.role = 'agent'
+            GROUP BY u.name
+            ORDER BY "studentCount" DESC
+        `);
+
+        return {
+            totalRevenue: parseFloat(statsRes.rows[0].total_revenue),
+            totalProfit: parseFloat(statsRes.rows[0].total_profit),
+            totalStudents: parseInt(statsRes.rows[0].total_students),
+            averageProfitPerHomework: parseFloat(statsRes.rows[0].average_profit_per_homework),
+            studentsPerAgent: agentStudentsRes.rows
+        };
+
+    } finally {
+        client.release();
+    }
+}
+
 
 export async function getPricingConfig(): Promise<PricingConfig> {
     const client = await pool.connect();
@@ -520,3 +595,5 @@ export async function markNotificationsAsRead(userId: string): Promise<void> {
         client.release();
     }
 }
+
+    

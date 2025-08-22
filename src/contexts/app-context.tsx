@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole } from '@/lib/types';
+import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole, SuperAgentDashboardStats } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import { 
   fetchUsers, 
@@ -21,9 +21,13 @@ import {
   fetchNotificationsForUser,
   broadcastNotification,
   updateUserRole,
-  markNotificationsAsRead
+  markNotificationsAsRead,
+  createReferenceCode,
+  getSuperAgentDashboardStats,
 } from '@/lib/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { DateRange } from 'react-day-picker';
+import { addDays } from 'date-fns';
 
 interface AppContextType {
   user: User | null;
@@ -60,8 +64,12 @@ interface AppContextType {
   referenceCodes: ReferenceCode[];
   fetchAllCodes: () => void;
   handleUpdateReferenceCode: (oldCode: string, newCode: string) => Promise<void>;
+  handleCreateReferenceCode: (code: string, role: UserRole, ownerId: string) => Promise<void>;
   
   analyticsData: AnalyticsData | null;
+  setAnalyticsDateRange: (range: DateRange) => void;
+  superAgentStats: SuperAgentDashboardStats | null;
+
   pricingConfig: PricingConfig | null;
   fetchPricingConfig: () => void;
   handleSavePricingConfig: (config: PricingConfig) => Promise<void>;
@@ -94,8 +102,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [workers, setWorkers] = useState<User[]>([]);
   const [referenceCodes, setReferenceCodes] = useState<ReferenceCode[]>([]);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [superAgentStats, setSuperAgentStats] = useState<SuperAgentDashboardStats | null>(null);
   const [pricingConfig, setPricingConfig] = useState<PricingConfig | null>(null);
   const [submissionAlert, setSubmissionAlert] = useState<{open: boolean, message: string}>({open: false, message: ''});
+  const [analyticsDateRange, setAnalyticsDateRange] = useState<DateRange>({ from: addDays(new Date(), -30), to: new Date()});
 
 
   const getHomeworksForUser = useCallback(async () => {
@@ -129,17 +139,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
        toast({ variant: 'destructive', title: "Error", description: error.message });
     }
   }
+
+  const handleCreateReferenceCode = async (code: string, role: UserRole, ownerId: string) => {
+    try {
+      await createReferenceCode(code, role, ownerId);
+      await fetchAllCodes();
+      toast({ title: "Success", description: `Reference code ${code} created.`});
+    } catch (error: any) {
+       toast({ variant: 'destructive', title: "Error", description: error.message });
+    }
+  };
   
   const fetchAnalytics = useCallback(async () => {
     if (!user) return;
     try {
-      const data = await getAnalyticsForUser(user);
+      const data = await getAnalyticsForUser(user, analyticsDateRange.from, analyticsDateRange.to);
       setAnalyticsData(data);
+
+      if(user.role === 'super_agent') {
+        const stats = await getSuperAgentDashboardStats();
+        setSuperAgentStats(stats);
+      }
+
     } catch (error) {
       console.error(error);
       toast({ variant: 'destructive', title: "Error", description: "Could not fetch analytics data." });
     }
-  }, [user, toast]);
+  }, [user, toast, analyticsDateRange]);
   
   const fetchUserNotifications = useCallback(async () => {
     if (!user) return;
@@ -245,6 +271,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPricingConfig(null);
       setNotifications([]);
       setUnreadNotificationCount(0);
+      setSuperAgentStats(null);
     }
   }, [user, fetchAllData, fetchAllCodes, fetchPricingConfig]);
 
@@ -362,7 +389,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     referenceCodes,
     fetchAllCodes,
     handleUpdateReferenceCode,
+    handleCreateReferenceCode,
     analyticsData,
+    setAnalyticsDateRange,
+    superAgentStats,
     pricingConfig,
     fetchPricingConfig,
     handleSavePricingConfig,
@@ -402,4 +432,5 @@ export function useAppContext() {
   return context;
 }
 
+    
     
