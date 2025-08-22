@@ -448,7 +448,7 @@ export async function getSuperAgentDashboardStats(): Promise<SuperAgentDashboard
                     total_revenue = $1, total_profit = $2, total_students = $3, average_profit_per_homework = $4, last_updated = NOW();
             `, [totalRevenue, totalProfit, totalStudents, averageProfitPerHomework]);
             
-            return { totalRevenue, totalProfit, totalStudents, averageProfitPerHomework, studentsPerAgent: [] };
+            return { totalRevenue: parseFloat(totalRevenue), totalProfit: parseFloat(totalProfit), totalStudents, averageProfitPerHomework: parseFloat(averageProfitPerHomework), studentsPerAgent: [] };
         }
 
         const agentStudentsRes = await client.query<StudentsPerAgent>(`
@@ -459,12 +459,13 @@ export async function getSuperAgentDashboardStats(): Promise<SuperAgentDashboard
             GROUP BY u.name
             ORDER BY "studentCount" DESC
         `);
-
+        
+        const row = statsRes.rows[0];
         return {
-            totalRevenue: parseFloat(statsRes.rows[0].total_revenue),
-            totalProfit: parseFloat(statsRes.rows[0].total_profit),
-            totalStudents: parseInt(statsRes.rows[0].total_students),
-            averageProfitPerHomework: parseFloat(statsRes.rows[0].average_profit_per_homework),
+            totalRevenue: parseFloat(row.total_revenue),
+            totalProfit: parseFloat(row.total_profit),
+            totalStudents: parseInt(row.total_students),
+            averageProfitPerHomework: parseFloat(row.average_profit_per_homework),
             studentsPerAgent: agentStudentsRes.rows
         };
 
@@ -595,3 +596,5 @@ export async function markNotificationsAsRead(userId: string): Promise<void> {
         client.release();
     }
 }
+
+    
