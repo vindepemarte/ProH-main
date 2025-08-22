@@ -8,17 +8,10 @@ export default function Landing() {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-grid-yellow-500/10">
-      <div className="absolute top-8">
-        <Logo />
-      </div>
       <main className="flex flex-col items-center z-10">
-        <Image 
-          src="/logo.png" 
-          alt="Illustration of a happy book character reading" 
-          width={250} 
-          height={250} 
-          className="mb-8"
-        />
+        <div className="mb-8">
+            <Logo />
+        </div>
         <h1 className="text-4xl md:text-5xl font-extrabold font-headline text-primary tracking-tight">
           Streamline Your Success
         </h1>

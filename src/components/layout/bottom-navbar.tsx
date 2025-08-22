@@ -4,6 +4,7 @@ import { Home, UserCircle, LogIn, LogOut } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { useAppContext } from '@/contexts/app-context';
 import { Logo } from './logo';
+import Image from 'next/image';
 
 export default function BottomNavbar() {
   const { user, setAuthModalOpen, setProfileModalOpen, logout } = useAppContext();
@@ -13,7 +14,7 @@ export default function BottomNavbar() {
       <div className="flex items-center justify-around w-full max-w-sm">
         <div className="absolute left-1/2 -translate-x-1/2">
             <Button variant="ghost" size="icon" className="w-20 h-20 rounded-full bg-background border-2 border-accent shadow-lg -translate-y-8 flex items-center justify-center hover:bg-accent/10">
-                <Home className="w-8 h-8 text-accent" />
+                <Image src="/logo.png" alt="Home" width={48} height={48} />
             </Button>
         </div>
         
