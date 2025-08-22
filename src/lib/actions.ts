@@ -107,7 +107,7 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
             params.push(user.id);
             break;
         case 'super_worker':
-             query += ` WHERE h.status IN ('payment_approval', 'in_progress', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed')`;
+             query += ` WHERE h.status IN ('in_progress', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed')`;
             break;
         case 'worker':
             query += ' WHERE h.worker_id = $1';
@@ -219,10 +219,10 @@ export async function createHomework(
 
     // Calculate base price
     const wordTiers = pricingConfig.wordTiers;
-    const closestWordTier = Object.keys(wordTiers).reduce((prev, curr) => 
-        (Math.abs(parseInt(curr) - data.wordCount) < Math.abs(parseInt(prev) - data.wordCount) ? curr : prev)
+    const closestWordTier = Object.keys(wordTiers).map(Number).reduce((prev, curr) => 
+        (Math.abs(curr - data.wordCount) < Math.abs(prev - data.wordCount) ? curr : prev)
     );
-    let basePrice = wordTiers[parseInt(closestWordTier)];
+    let basePrice = wordTiers[closestWordTier];
 
     // Calculate deadline charge
     const daysUntilDeadline = differenceInDays(data.deadline, new Date());
@@ -273,7 +273,7 @@ export async function createHomework(
         createdHomework.files = data.files;
         return {
             homework: createdHomework,
-            message: `Homework #${homeworkId} created. Please use this ID as payment reference. Total price: £${finalPrice.toFixed(2)}.`
+            message: `Your homework has been submitted successfully. The reference ID is ${homeworkId}. Please use this ID as the reference for your payment.`
         };
     } catch(e) {
         await client.query('ROLLBACK');
@@ -292,20 +292,21 @@ export async function getAnalyticsForUser(user: User): Promise<AnalyticsData> {
 
         switch(user.role) {
             case 'student':
-                metric1Query = `SELECT TO_CHAR(deadline, 'Mon') as month, SUM(price) as value FROM homeworks WHERE student_id = $1 AND status = 'completed' GROUP BY TO_CHAR(deadline, 'Mon')`;
-                metric2Query = `SELECT TO_CHAR(deadline, 'Mon') as month, COUNT(*) as value FROM homeworks WHERE student_id = $1 GROUP BY TO_CHAR(deadline, 'Mon')`;
+                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM(price) as value FROM homeworks WHERE student_id = $1 AND status = 'completed' GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE student_id = $1 GROUP BY 1 ORDER BY 1`;
                 break;
             case 'agent':
-                metric1Query = `SELECT TO_CHAR(h.deadline, 'Mon') as month, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 AND h.status = 'completed' GROUP BY TO_CHAR(h.deadline, 'Mon')`;
-                metric2Query = `SELECT TO_CHAR(h.deadline, 'Mon') as month, COUNT(*) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 GROUP BY TO_CHAR(h.deadline, 'Mon')`;
+                metric1Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 AND h.status = 'completed' GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(h.deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks h JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1 GROUP BY 1 ORDER BY 1`;
                 break;
             case 'super_worker':
-                metric1Query = `SELECT TO_CHAR(deadline, 'Mon') as month, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE super_worker_id = $1 AND status = 'completed' GROUP BY TO_CHAR(deadline, 'Mon')`;
-                metric2Query = `SELECT TO_CHAR(deadline, 'Mon') as month, COUNT(*) as value FROM homeworks WHERE super_worker_id = $1 GROUP BY TO_CHAR(deadline, 'Mon')`;
+                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status = 'completed' GROUP BY 1 ORDER BY 1`;
+                metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks GROUP BY 1 ORDER BY 1`;
+                 params.pop();
                 break;
             case 'super_agent':
-                 metric1Query = `SELECT TO_CHAR(deadline, 'Mon') as month, SUM((earnings->>'profit')::numeric) as value FROM homeworks WHERE status = 'completed' GROUP BY TO_CHAR(deadline, 'Mon')`;
-                 metric2Query = `SELECT TO_CHAR(deadline, 'Mon') as month, COUNT(*) as value FROM homeworks GROUP BY TO_CHAR(deadline, 'Mon')`;
+                 metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM((earnings->>'profit')::numeric) as value FROM homeworks WHERE status = 'completed' GROUP BY 1 ORDER BY 1`;
+                 metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks GROUP BY 1 ORDER BY 1`;
                  params.pop(); // No user id needed for super agent
                  break;
             default:
@@ -317,9 +318,17 @@ export async function getAnalyticsForUser(user: User): Promise<AnalyticsData> {
              client.query(metric2Query, params)
         ]);
 
+        const formatAnalytics = (rows: any[]) => {
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            return rows.map(r => ({
+                month: monthNames[new Date(r.month).getMonth()],
+                value: parseFloat(r.value)
+            }));
+        }
+
         return {
-            metric1: metric1Res.rows,
-            metric2: metric2Res.rows,
+            metric1: formatAnalytics(metric1Res.rows),
+            metric2: formatAnalytics(metric2Res.rows),
         };
 
     } finally {
@@ -343,7 +352,7 @@ export async function getPricingConfig(): Promise<PricingConfig> {
 export async function savePricingConfig(config: PricingConfig): Promise<void> {
     const client = await pool.connect();
     try {
-        await client.query("UPDATE pricing_config SET config = $1 WHERE id = 'main'", [JSON.stringify(config)]);
+        await client.query("UPDATE pricing_config SET config = $1 WHERE id = 'main'", [config]);
     } finally {
         client.release();
     }
@@ -352,14 +361,12 @@ export async function savePricingConfig(config: PricingConfig): Promise<void> {
 export async function getCalculatedPrice(wordCount: number, deadline: Date): Promise<number> {
     const pricingConfig = await getPricingConfig();
     
-    // Find closest word tier
     const wordTiers = pricingConfig.wordTiers;
-    const closestWordTier = Object.keys(wordTiers).reduce((prev, curr) => 
-        (Math.abs(parseInt(curr) - wordCount) < Math.abs(parseInt(prev) - wordCount) ? curr : prev)
+    const closestWordTier = Object.keys(wordTiers).map(Number).reduce((prev, curr) => 
+        (Math.abs(curr - wordCount) < Math.abs(prev - wordCount) ? curr : prev)
     );
-    const basePrice = wordTiers[parseInt(closestWordTier)];
+    const basePrice = wordTiers[closestWordTier] || 0;
 
-    // Calculate deadline charge
     const daysUntilDeadline = differenceInDays(deadline, new Date());
     let deadlineCharge = 0;
     if (daysUntilDeadline <= 1) deadlineCharge = pricingConfig.deadlineTiers[1] || 0;
@@ -368,3 +375,5 @@ export async function getCalculatedPrice(wordCount: number, deadline: Date): Pro
     
     return basePrice + deadlineCharge;
 }
+
+    
