@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useAppContext } from "@/contexts/app-context"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 
 export default function SettingsView() {
     const { user, referenceCodes, getReferenceCodesForUser } = useAppContext();
@@ -23,11 +23,14 @@ export default function SettingsView() {
             return <p>No reference codes found.</p>;
         }
 
-        return referenceCodes.map(rc => (
-             <p key={rc.code}>
-                For <span className="capitalize">{rc.role.replace('_', ' ')}s</span>: <span className="font-mono bg-muted p-1 rounded">{rc.code}</span>
-            </p>
-        ));
+        return referenceCodes.map(rc => {
+            if (!rc.role) return null;
+            return (
+                 <p key={rc.code}>
+                    For <span className="capitalize">{rc.role.replace(/_/g, ' ')}s</span>: <span className="font-mono bg-muted p-1 rounded">{rc.code}</span>
+                </p>
+            )
+        }).filter(Boolean);
     }
 
 
