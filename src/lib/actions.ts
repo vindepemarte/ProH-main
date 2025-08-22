@@ -121,16 +121,24 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
 
     try {
         const res = await client.query(query, params);
-        return res.rows.map(row => ({
-            ...row,
-            studentId: row.student_id,
-            agentId: row.agent_id,
-            workerId: row.worker_id,
-            superWorkerId: row.super_worker_id,
-            moduleName: row.module_name,
-            projectNumber: row.project_number, 
-            wordCount: row.word_count, 
+        
+        // Fetch files for each homework
+        const homeworks = await Promise.all(res.rows.map(async (row) => {
+            const filesRes = await client.query('SELECT file_name as name, file_url as url FROM homework_files WHERE homework_id = $1', [row.id]);
+            return {
+                ...row,
+                studentId: row.student_id,
+                agentId: row.agent_id,
+                workerId: row.worker_id,
+                superWorkerId: row.super_worker_id,
+                moduleName: row.module_name,
+                projectNumber: row.project_number, 
+                wordCount: row.word_count,
+                files: filesRes.rows
+            };
         }));
+
+        return homeworks;
     } finally {
         client.release();
     }
@@ -191,12 +199,13 @@ export async function createHomework(
     }
 ): Promise<Homework> {
     const client = await pool.connect();
+    const homeworkId = `hw_${Date.now()}`;
     
     // Simplified logic for agent and pricing
     const agentId = student.referredBy; // This might need more complex logic
     const price = data.wordCount * 0.10; // Dummy price logic
 
-    const newHomework: Omit<Homework, 'id' | 'status' | 'earnings'> = {
+    const newHomework: Omit<Homework, 'id' | 'status' | 'earnings' | 'files'> = {
         studentId: student.id,
         agentId: agentId,
         moduleName: data.moduleName,
@@ -204,20 +213,38 @@ export async function createHomework(
         wordCount: data.wordCount,
         deadline: data.deadline,
         notes: data.notes,
-        files: data.files,
         price: price,
     };
-    
-    const homeworkId = `hw_${Date.now()}`;
 
     try {
+        await client.query('BEGIN');
+
         const res = await client.query(
             `INSERT INTO homeworks 
-            (id, student_id, agent_id, status, module_name, project_number, word_count, deadline, notes, files, price) 
-            VALUES ($1, $2, $3, 'payment_approval', $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [homeworkId, newHomework.studentId, newHomework.agentId, newHomework.moduleName, newHomework.projectNumber, newHomework.wordCount, newHomework.deadline, newHomework.notes, JSON.stringify(newHomework.files), newHomework.price]
+            (id, student_id, agent_id, status, module_name, project_number, word_count, deadline, notes, price) 
+            VALUES ($1, $2, $3, 'payment_approval', $4, $5, $6, $7, $8, $9) RETURNING *`,
+            [homeworkId, newHomework.studentId, newHomework.agentId, newHomework.moduleName, newHomework.projectNumber, newHomework.wordCount, newHomework.deadline, newHomework.notes, newHomework.price]
         );
-        return res.rows[0];
+
+        if (data.files && data.files.length > 0) {
+            for (const file of data.files) {
+                const fileId = `file_${Date.now()}`;
+                // In a real app, you'd upload the file to storage first and get a URL.
+                // For now, we'll assume file.url is a placeholder.
+                await client.query(
+                    'INSERT INTO homework_files (id, homework_id, file_name, file_url) VALUES ($1, $2, $3, $4)',
+                    [fileId, homeworkId, file.name, file.url || '']
+                );
+            }
+        }
+        
+        await client.query('COMMIT');
+        const createdHomework = res.rows[0];
+        createdHomework.files = data.files; // Add files back for the return object
+        return createdHomework;
+    } catch(e) {
+        await client.query('ROLLBACK');
+        throw e;
     } finally {
         client.release();
     }

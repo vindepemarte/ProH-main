@@ -52,7 +52,7 @@ export interface Homework {
   wordCount: number;
   deadline: Date;
   notes: string;
-  files: { name: string; url: string }[];
+  files?: { name: string; url: string }[];
   price?: number;
   earnings?: {
     total: number;
