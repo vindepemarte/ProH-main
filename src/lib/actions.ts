@@ -50,6 +50,10 @@ export async function authenticateUser(email: string, pass: string): Promise<Use
 
 export async function createUser(name: string, email: string, pass: string, refCode: string): Promise<User | null> {
     const client = await pool.connect();
+    let notificationOwnerId: string | null = null;
+    let newUserName: string | null = null;
+    let newUserRole: UserRole | null = null;
+
     try {
         await client.query('BEGIN');
 
@@ -78,21 +82,35 @@ export async function createUser(name: string, email: string, pass: string, refC
             [newUserId, newUser.name, newUser.email, newUser.password_hash, newUser.role, newUser.referredBy]
         );
         
-        if (code.owner_id) {
-            await createNotification({
-                userId: code.owner_id, // Notify the person who owns the code
-                message: `A new ${newUser.role}, ${newUser.name}, has registered using your reference code.`
-            });
-        }
-        
         await client.query('COMMIT');
+        
+        // Store details for notification after commit
+        if (code.owner_id) {
+           notificationOwnerId = code.owner_id;
+           newUserName = newUser.name;
+           newUserRole = newUser.role;
+        }
+
         const { password_hash, ...userWithoutPassword } = insertRes.rows[0];
         return userWithoutPassword;
+
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
     } finally {
         client.release();
+        
+        // Create notification after transaction is closed
+        if (notificationOwnerId && newUserName && newUserRole) {
+             try {
+                await createNotification({
+                    userId: notificationOwnerId, // Notify the person who owns the code
+                    message: `A new ${newUserRole}, ${newUserName}, has registered using your reference code.`
+                });
+            } catch (notificationError) {
+                console.error("Failed to create notification after user registration:", notificationError);
+            }
+        }
     }
 }
 
@@ -154,6 +172,7 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
 
 export async function modifyHomework(id: string, updates: Partial<Homework>): Promise<void> {
     const client = await pool.connect();
+    let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
     
     try {
         await client.query('BEGIN');
@@ -174,32 +193,31 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
             const query = `UPDATE homeworks SET ${setClause} WHERE id = $1`;
             await client.query(query, [id, ...values]);
         }
+        
+        await client.query('COMMIT');
 
         // --- Handle Notifications based on Status Change ---
         if (updates.status && updates.status !== homework.status) {
             const messageBase = `Homework #${id.split('_')[1]} status has been updated to "${updates.status.replace(/_/g, ' ')}".`
             if (updates.status === 'in_progress') {
-                // Find and notify the first available super_worker
                 const superWorkerRes = await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
                 if (superWorkerRes.rows.length > 0) {
-                    await createNotification({ userId: superWorkerRes.rows[0].id, message: `New homework #${id.split('_')[1]} is ready for assignment.`, homeworkId: id });
+                    notificationDetails = { userId: superWorkerRes.rows[0].id, message: `New homework #${id.split('_')[1]} is ready for assignment.`, homeworkId: id };
                 }
             } else if (updates.status === 'completed') {
-                 await createNotification({ userId: homework.student_id, message: `${messageBase} Your files are ready for download.`, homeworkId: id });
+                 notificationDetails = { userId: homework.student_id, message: `${messageBase} Your files are ready for download.`, homeworkId: id };
             } else if (updates.status === 'final_payment_approval') {
                 const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
                 if (superAgentRes.rows.length > 0) {
-                    await createNotification({ userId: superAgentRes.rows[0].id, message: `Homework #${id.split('_')[1]} is ready for final approval.`, homeworkId: id });
+                    notificationDetails = { userId: superAgentRes.rows[0].id, message: `Homework #${id.split('_')[1]} is ready for final approval.`, homeworkId: id };
                 }
             } else if (updates.status === 'requested_changes') {
                  const superWorkerId = homework.super_worker_id || (await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1")).rows[0]?.id;
                  if (superWorkerId) {
-                     await createNotification({ userId: superWorkerId, message: `The student has requested changes for homework #${id.split('_')[1]}.`, homeworkId: id });
+                     notificationDetails = { userId: superWorkerId, message: `The student has requested changes for homework #${id.split('_')[1]}.`, homeworkId: id };
                  }
             }
         }
-        
-        await client.query('COMMIT');
 
     } catch (error) {
         await client.query('ROLLBACK');
@@ -207,6 +225,15 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
         throw error;
     } finally {
         client.release();
+        
+        // Create notification after transaction is closed
+        if (notificationDetails) {
+            try {
+                await createNotification(notificationDetails);
+            } catch (notificationError) {
+                console.error("Failed to create notification after homework modification:", notificationError);
+            }
+        }
     }
 }
 
@@ -284,34 +311,29 @@ export async function createHomework(
 ): Promise<{homework: Homework, message: string}> {
     const client = await pool.connect();
     const homeworkId = `hw_${Date.now()}`;
-    
-    const pricingConfig = await getPricingConfig();
-    const studentDetails = (await client.query('SELECT * FROM users WHERE id = $1', [student.id])).rows[0];
-    const agent = studentDetails.referred_by ? (await client.query('SELECT * FROM users WHERE id = $1', [studentDetails.referred_by])).rows[0] : null;
-    const finalPrice = await getCalculatedPrice(data.wordCount, data.deadline);
-
-    // Calculate earnings
-    const agentFeePer500 = pricingConfig.fees.agent;
-    const superWorkerFeePer500 = pricingConfig.fees.super_worker;
-
-    const agentPay = agent ? (agentFeePer500 * (data.wordCount / 500)) : 0;
-    const superWorkerPay = superWorkerFeePer500 * (data.wordCount / 500);
-
-    const profit = finalPrice - agentPay - superWorkerPay;
-
-    const earnings = {
-        total: finalPrice,
-        agent: agentPay > 0 ? agentPay : undefined,
-        super_worker: superWorkerPay,
-        profit: profit
-    };
-    
-    const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
-    if (superAgentRes.rows.length === 0) throw new Error("No super agent found in the system to notify.");
-    const superAgentId = superAgentRes.rows[0].id;
-
+    let createdHomework: Homework;
+    let message: string;
+    let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
 
     try {
+        const pricingConfig = await getPricingConfig();
+        const studentDetails = (await client.query('SELECT * FROM users WHERE id = $1', [student.id])).rows[0];
+        const agent = studentDetails.referred_by ? (await client.query('SELECT * FROM users WHERE id = $1', [studentDetails.referred_by])).rows[0] : null;
+        const finalPrice = await getCalculatedPrice(data.wordCount, data.deadline);
+
+        const agentFeePer500 = pricingConfig.fees.agent;
+        const superWorkerFeePer500 = pricingConfig.fees.super_worker;
+        const agentPay = agent ? (agentFeePer500 * (data.wordCount / 500)) : 0;
+        const superWorkerPay = superWorkerFeePer500 * (data.wordCount / 500);
+        const profit = finalPrice - agentPay - superWorkerPay;
+
+        const earnings = {
+            total: finalPrice,
+            agent: agentPay > 0 ? agentPay : undefined,
+            super_worker: superWorkerPay,
+            profit: profit
+        };
+        
         await client.query('BEGIN');
 
         const res = await client.query(
@@ -329,17 +351,11 @@ export async function createHomework(
                 );
             }
         }
-        
-        await createNotification({
-            userId: superAgentId,
-            message: `New homework #${homeworkId.split('_')[1]} from ${student.name} requires payment approval.`,
-            homeworkId: homeworkId
-        });
 
         await client.query('COMMIT');
         
         const createdHomeworkRow = res.rows[0];
-        const createdHomework = {
+        createdHomework = {
             ...createdHomeworkRow,
              studentId: createdHomeworkRow.student_id,
             agentId: createdHomeworkRow.agent_id,
@@ -351,17 +367,34 @@ export async function createHomework(
             files: data.files,
             earnings: createdHomeworkRow.earnings
         };
+        message = `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${createdHomework.id.split('_')[1]} as the reference for your payment.`;
+
+        const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+        if (superAgentRes.rows.length > 0) {
+            notificationDetails = {
+                userId: superAgentRes.rows[0].id,
+                message: `New homework #${homeworkId.split('_')[1]} from ${student.name} requires payment approval.`,
+                homeworkId: homeworkId
+            };
+        }
         
-        return {
-            homework: createdHomework,
-            message: `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${createdHomework.id.split('_')[1]} as the reference for your payment.`
-        };
     } catch(e) {
         await client.query('ROLLBACK');
         throw e;
     } finally {
         client.release();
     }
+    
+    // Create notification after transaction is closed
+    if (notificationDetails) {
+        try {
+            await createNotification(notificationDetails);
+        } catch (notificationError) {
+            console.error("Failed to create notification after homework creation:", notificationError);
+        }
+    }
+
+    return { homework: createdHomework, message };
 }
 
 export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): Promise<AnalyticsData> {
@@ -426,32 +459,19 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
 export async function getSuperAgentDashboardStats(): Promise<SuperAgentDashboardStats> {
     const client = await pool.connect();
     try {
-        const statsRes = await client.query("SELECT * FROM super_agent_stats LIMIT 1");
-        if(statsRes.rows.length === 0) {
-            // Calculate and insert if not present
-            const calcRes = await client.query(`
-                SELECT 
-                    COALESCE(SUM(price), 0) as "totalRevenue",
-                    COALESCE(SUM((earnings->>'profit')::numeric), 0) as "totalProfit"
-                FROM homeworks WHERE status = 'completed'
-            `);
-            const studentRes = await client.query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
-            
-            const { totalRevenue, totalProfit } = calcRes.rows[0];
-            const totalStudents = parseInt(studentRes.rows[0].count);
-            const homeworkCount = (await client.query("SELECT COUNT(*) FROM homeworks WHERE status = 'completed'")).rows[0].count;
-            const averageProfitPerHomework = homeworkCount > 0 ? totalProfit / homeworkCount : 0;
-            
-             await client.query(`
-                INSERT INTO super_agent_stats (id, total_revenue, total_profit, total_students, average_profit_per_homework, last_updated)
-                VALUES (1, $1, $2, $3, $4, NOW())
-                ON CONFLICT (id) DO UPDATE SET
-                    total_revenue = $1, total_profit = $2, total_students = $3, average_profit_per_homework = $4, last_updated = NOW();
-            `, [totalRevenue, totalProfit, totalStudents, averageProfitPerHomework]);
-            
-            return { totalRevenue: parseFloat(totalRevenue), totalProfit: parseFloat(totalProfit), totalStudents, averageProfitPerHomework: parseFloat(averageProfitPerHomework), studentsPerAgent: [] };
-        }
-
+        const statsRes = await client.query(`
+             SELECT 
+                (SELECT COALESCE(SUM(price), 0) FROM homeworks WHERE status = 'completed') as total_revenue,
+                (SELECT COALESCE(SUM((earnings->>'profit')::numeric), 0) FROM homeworks WHERE status = 'completed') as total_profit,
+                (SELECT COUNT(*) FROM users WHERE role = 'student') as total_students
+        `);
+        
+        const { total_revenue, total_profit, total_students } = statsRes.rows[0];
+        const homeworkCountRes = await client.query("SELECT COUNT(*) FROM homeworks WHERE status = 'completed'");
+        const homeworkCount = parseInt(homeworkCountRes.rows[0].count, 10);
+        
+        const average_profit_per_homework = homeworkCount > 0 ? parseFloat(total_profit) / homeworkCount : 0;
+        
         const agentStudentsRes = await client.query<StudentsPerAgent>(`
             SELECT u.name as "agentName", COUNT(s.id) as "studentCount"
             FROM users u
@@ -461,12 +481,11 @@ export async function getSuperAgentDashboardStats(): Promise<SuperAgentDashboard
             ORDER BY "studentCount" DESC
         `);
         
-        const row = statsRes.rows[0];
         return {
-            totalRevenue: parseFloat(row.total_revenue),
-            totalProfit: parseFloat(row.total_profit),
-            totalStudents: parseInt(row.total_students),
-            averageProfitPerHomework: parseFloat(row.average_profit_per_homework),
+            totalRevenue: parseFloat(total_revenue),
+            totalProfit: parseFloat(total_profit),
+            totalStudents: parseInt(total_students, 10),
+            averageProfitPerHomework: average_profit_per_homework,
             studentsPerAgent: agentStudentsRes.rows
         };
 
@@ -533,10 +552,19 @@ export async function fetchNotificationsForUser(userId: string): Promise<Notific
         if(userRes.rows.length === 0) return [];
         const userRole = userRes.rows[0].role;
         
-        const res = await client.query(
-            "SELECT * FROM notifications WHERE user_id = $1 OR ($2 = 'super_agent' AND user_id = 'super_agent') OR ($2 = 'super_worker' AND user_id = 'super_worker') ORDER BY created_at DESC",
-            [userId, userRole]
-        );
+        let query = "SELECT * FROM notifications WHERE user_id = $1";
+        const params: string[] = [userId];
+
+        // Super roles can see notifications for their role group
+        if (userRole === 'super_agent') {
+            query += " OR user_id = 'super_agent'";
+        } else if (userRole === 'super_worker') {
+            query += " OR user_id = 'super_worker'";
+        }
+
+        query += " ORDER BY created_at DESC";
+
+        const res = await client.query(query, params);
         return res.rows;
     } finally {
         client.release();
