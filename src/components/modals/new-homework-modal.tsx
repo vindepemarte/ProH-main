@@ -1,9 +1,10 @@
 "use client"
 
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import * as z from "zod"
 import { format } from "date-fns"
+import { useEffect, useState, useCallback } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -24,7 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useAppContext } from "@/contexts/app-context"
 import { cn } from "@/lib/utils"
 import { ProjectNumber } from "@/lib/types"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, Loader2 } from "lucide-react"
 
 const projectNumbers: { id: ProjectNumber; label: string }[] = [
     { id: 'A1', label: 'Assignment 1' },
@@ -45,9 +46,9 @@ const homeworkFormSchema = z.object({
   files: z.any().optional(),
 })
 .refine(data => {
-    if (typeof window === 'undefined') return true; // Skip validation on server
+    if (typeof window === 'undefined') return true; 
     if (data.files && data.files instanceof FileList) {
-      return data.files.length > 0 ? Array.from(data.files).every(file => file instanceof File) : true;
+      return Array.from(data.files).every(file => file instanceof File);
     }
     return true;
   }, {
@@ -64,7 +65,9 @@ interface NewHomeworkModalProps {
 }
 
 export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModalProps) {
-  const { submitHomework } = useAppContext();
+  const { submitHomework, calculatePrice } = useAppContext();
+  const [calculatedPrice, setCalculatedPrice] = useState<number | null>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
   
   const form = useForm<HomeworkFormValues>({
     resolver: zodResolver(homeworkFormSchema),
@@ -73,15 +76,37 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
       projectNumber: [],
       wordCount: 1000,
       notes: "",
+      files: undefined
     },
   })
+
+  const watchedWordCount = useWatch({ control: form.control, name: 'wordCount' });
+  const watchedDeadline = useWatch({ control: form.control, name: 'deadline' });
   
   const fileRef = form.register("files");
+
+  const handlePriceCalculation = useCallback(async () => {
+    if (watchedWordCount && watchedDeadline) {
+      setIsCalculating(true);
+      const price = await calculatePrice(watchedWordCount, watchedDeadline);
+      setCalculatedPrice(price);
+      setIsCalculating(false);
+    }
+  }, [watchedWordCount, watchedDeadline, calculatePrice]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+        handlePriceCalculation();
+    }, 500); // Debounce calculation
+    return () => clearTimeout(timer);
+  }, [handlePriceCalculation]);
+
 
   async function onSubmit(data: HomeworkFormValues) {
     const uploadedFiles = data.files && data.files.length > 0 ? Array.from(data.files as FileList).map(file => ({ name: file.name, url: "" })) : [];
     await submitHomework({ ...data, notes: data.notes || '', files: uploadedFiles });
     form.reset();
+    setCalculatedPrice(null);
     onOpenChange(false);
   }
 
@@ -91,7 +116,7 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
         <DialogHeader>
           <DialogTitle>Request New Homework</DialogTitle>
           <DialogDescription>
-            Fill out the details below to submit a new assignment request.
+            Fill out the details below to submit a new assignment request. The price will be calculated automatically.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -214,6 +239,22 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
                 </FormItem>
               )}
             />
+            
+            <Card className="bg-muted/50">
+              <CardContent className="p-4">
+                  <div className="flex justify-between items-center">
+                    <p className="text-lg font-semibold">Estimated Price:</p>
+                    {isCalculating ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <p className="text-2xl font-bold text-primary">
+                        {calculatedPrice !== null ? `£${calculatedPrice.toFixed(2)}` : '...'}
+                      </p>
+                    )}
+                  </div>
+              </CardContent>
+            </Card>
+
 
             <FormField
               control={form.control}
@@ -236,11 +277,11 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
             <FormField
               control={form.control}
               name="files"
-              render={() => (
+              render={({ field }) => (
                 <FormItem>
                   <FormLabel>Upload Files</FormLabel>
                   <FormControl>
-                    <Input type="file" multiple {...fileRef} />
+                    <Input type="file" multiple {...fileRef} onChange={(e) => field.onChange(e.target.files)} />
                   </FormControl>
                   <FormDescription>
                     Attach up to 20 files, max 50MB each.
@@ -252,7 +293,7 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
 
           <DialogFooter className="pt-4 sticky bottom-0 bg-background/95 pb-4">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit">Submit Homework</Button>
+            <Button type="submit" disabled={isCalculating || calculatedPrice === null}>Submit Homework</Button>
           </DialogFooter>
           </form>
         </Form>

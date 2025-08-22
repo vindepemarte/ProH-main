@@ -1,9 +1,24 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import type { User, Homework, HomeworkStatus, UserRole, ReferenceCode, AnalyticsData, ProjectNumber } from '@/lib/types';
+import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
-import { fetchUsers, authenticateUser, createUser, fetchHomeworksForUser, modifyHomework, fetchWorkersForSuperWorker, fetchReferenceCodesForUser, createHomework, getAnalyticsForUser } from '@/lib/actions';
+import { 
+  fetchUsers, 
+  authenticateUser, 
+  createUser, 
+  fetchHomeworksForUser, 
+  modifyHomework, 
+  fetchWorkersForSuperWorker, 
+  fetchAllReferenceCodes, 
+  updateReferenceCode,
+  createHomework, 
+  getAnalyticsForUser,
+  getPricingConfig,
+  savePricingConfig,
+  getCalculatedPrice
+} from '@/lib/actions';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 interface AppContextType {
   user: User | null;
@@ -38,8 +53,15 @@ interface AppContextType {
 
   workers: User[];
   referenceCodes: ReferenceCode[];
-  getReferenceCodesForUser: () => void;
+  fetchAllCodes: () => void;
+  handleUpdateReferenceCode: (oldCode: string, newCode: string) => Promise<void>;
+  
   analyticsData: AnalyticsData | null;
+  pricingConfig: PricingConfig | null;
+  fetchPricingConfig: () => void;
+  handleSavePricingConfig: (config: PricingConfig) => Promise<void>;
+
+  calculatePrice: (wordCount: number, deadline: Date) => Promise<number>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -58,6 +80,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [workers, setWorkers] = useState<User[]>([]);
   const [referenceCodes, setReferenceCodes] = useState<ReferenceCode[]>([]);
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [pricingConfig, setPricingConfig] = useState<PricingConfig | null>(null);
+  const [submissionAlert, setSubmissionAlert] = useState<{open: boolean, message: string}>({open: false, message: ''});
+
 
   const getHomeworksForUser = useCallback(async () => {
     if (!user) return;
@@ -70,16 +95,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user, toast]);
 
-  const getReferenceCodesForUser = useCallback(async () => {
-    if (!user) return;
+  const fetchAllCodes = useCallback(async () => {
+    if (!user || user.role !== 'super_agent') return;
     try {
-      const codes = await fetchReferenceCodesForUser(user.id);
+      const codes = await fetchAllReferenceCodes();
       setReferenceCodes(codes);
     } catch (error) {
        console.error(error);
        toast({ variant: 'destructive', title: "Error", description: "Could not fetch reference codes." });
     }
   }, [user, toast]);
+
+  const handleUpdateReferenceCode = async (oldCode: string, newCode: string) => {
+    try {
+      await updateReferenceCode(oldCode, newCode);
+      await fetchAllCodes();
+      toast({ title: "Success", description: `Reference code ${oldCode} updated to ${newCode}.`});
+    } catch(error: any) {
+       toast({ variant: 'destructive', title: "Error", description: error.message });
+    }
+  }
   
   const fetchAnalytics = useCallback(async () => {
     if (!user) return;
@@ -92,17 +127,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user, toast]);
 
+  const fetchPricingConfig = useCallback(async () => {
+    try {
+        const config = await getPricingConfig();
+        setPricingConfig(config);
+    } catch (error) {
+        console.error(error);
+        toast({ variant: 'destructive', title: "Error", description: "Could not fetch pricing configuration." });
+    }
+  }, [toast]);
+
+  const handleSavePricingConfig = async (config: PricingConfig) => {
+    try {
+        await savePricingConfig(config);
+        setPricingConfig(config);
+        toast({ title: "Success", description: "Pricing configuration saved."});
+    } catch(error) {
+        console.error(error);
+        toast({ variant: 'destructive', title: "Error", description: "Could not save pricing configuration." });
+    }
+  };
+
   useEffect(() => {
     if (user) {
       getHomeworksForUser();
       fetchAnalytics();
+      fetchPricingConfig();
       if (user.role === 'super_worker') {
         fetchWorkersForSuperWorker(user.id).then(setWorkers);
       }
-      if (['super_agent', 'agent', 'super_worker'].includes(user.role)) {
-        getReferenceCodesForUser();
-      }
-       if (user.role === 'super_agent') {
+      if (user.role === 'super_agent') {
+        fetchAllCodes();
         fetchUsers().then(setAllUsers);
       }
     } else {
@@ -111,8 +166,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setReferenceCodes([]);
       setAllUsers([]);
       setAnalyticsData(null);
+      setPricingConfig(null);
     }
-  }, [user, getHomeworksForUser, getReferenceCodesForUser, fetchAnalytics]);
+  }, [user, getHomeworksForUser, fetchAllCodes, fetchAnalytics, fetchPricingConfig]);
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     try {
@@ -159,7 +215,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateHomework = async (id: string, updates: Partial<Homework>) => {
     try {
         await modifyHomework(id, updates);
-        await getHomeworksForUser(); // Refresh homeworks list
+        await getHomeworksForUser(); 
         
         if (selectedHomework && selectedHomework.id === id) {
             setSelectedHomework({ ...selectedHomework, ...updates });
@@ -181,15 +237,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }) => {
       if(!user) return;
       try {
-        await createHomework(user, data);
+        const result = await createHomework(user, data);
         await getHomeworksForUser();
         setIsNewHomeworkModalOpen(false);
-        toast({ title: "Homework Submitted", description: "Your homework has been submitted for approval." });
+        setSubmissionAlert({ open: true, message: result.message });
       } catch (error) {
         console.error(error);
         toast({ variant: 'destructive', title: "Submission Error", description: "Could not submit your homework." });
       }
   }
+
+  const calculatePrice = useCallback(async (wordCount: number, deadline: Date) => {
+    if (!wordCount || !deadline) return 0;
+    try {
+      return await getCalculatedPrice(wordCount, deadline);
+    } catch (error) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: "Could not calculate price." });
+      return 0;
+    }
+  }, [toast]);
+
 
   const value = {
     user,
@@ -213,11 +281,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsNewHomeworkModalOpen,
     workers,
     referenceCodes,
-    getReferenceCodesForUser,
+    fetchAllCodes,
+    handleUpdateReferenceCode,
     analyticsData,
+    pricingConfig,
+    fetchPricingConfig,
+    handleSavePricingConfig,
+    calculatePrice,
   };
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>
+        {children}
+        <AlertDialog open={submissionAlert.open} onOpenChange={(open) => setSubmissionAlert({...submissionAlert, open})}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Homework Submitted!</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        {submissionAlert.message}
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogAction onClick={() => setSubmissionAlert({open: false, message: ''})}>OK</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    </AppContext.Provider>
+  );
 }
 
 export function useAppContext() {

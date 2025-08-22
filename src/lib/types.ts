@@ -33,7 +33,7 @@ export type HomeworkStatus =
 export type ProjectNumber = 'A1' | 'A2' | 'A3' | 'A4' | 'Full Project';
   
 export interface HomeworkFile {
-    id: string;
+    id: number;
     homework_id: string;
     file_name: string;
     file_url: string;
@@ -65,4 +65,23 @@ export interface Homework {
 export interface AnalyticsData {
   metric1: { month: string; value: number }[];
   metric2: { month: string; value: number }[];
+}
+
+export interface WordTier {
+    [key: number]: number;
+}
+
+export interface FeeTier {
+    agent: number;
+    super_worker: number;
+}
+
+export interface DeadlineTier {
+    [key: number]: number;
+}
+
+export interface PricingConfig {
+    wordTiers: WordTier;
+    fees: FeeTier;
+    deadlineTiers: DeadlineTier;
 }

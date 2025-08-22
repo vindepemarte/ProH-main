@@ -5,33 +5,85 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { useAppContext } from "@/contexts/app-context"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { ScrollArea } from "../ui/scroll-area"
+import type { PricingConfig } from "@/lib/types"
+
+function ReferenceCodeManager() {
+    const { referenceCodes, fetchAllCodes, handleUpdateReferenceCode } = useAppContext();
+    const [editingCodes, setEditingCodes] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        fetchAllCodes();
+    }, [fetchAllCodes]);
+
+    const handleCodeChange = (oldCode: string, newCode: string) => {
+        setEditingCodes(prev => ({...prev, [oldCode]: newCode}));
+    }
+
+    const handleSave = (oldCode: string) => {
+        const newCode = editingCodes[oldCode];
+        if (newCode && newCode !== oldCode) {
+            handleUpdateReferenceCode(oldCode, newCode);
+        }
+    }
+
+    if (!referenceCodes || referenceCodes.length === 0) {
+        return <p className="text-muted-foreground">No reference codes found.</p>;
+    }
+    
+    return referenceCodes.map(rc => {
+         if (!rc.role) return null;
+         return (
+             <div key={rc.code} className="flex items-center gap-4">
+                 <Label className="w-48">For <span className="capitalize">{rc.role.replace(/_/g, ' ')}s</span>:</Label>
+                 <Input 
+                    className="font-mono"
+                    value={editingCodes[rc.code] || rc.code}
+                    onChange={(e) => handleCodeChange(rc.code, e.target.value)}
+                 />
+                 <Button onClick={() => handleSave(rc.code)} disabled={!editingCodes[rc.code] || editingCodes[rc.code] === rc.code}>Save</Button>
+             </div>
+         )
+     }).filter(Boolean);
+}
+
 
 export default function SettingsView() {
-    const { user, referenceCodes, getReferenceCodesForUser } = useAppContext();
-    
+    const { user, pricingConfig, handleSavePricingConfig } = useAppContext();
+    const [localConfig, setLocalConfig] = useState<PricingConfig | null>(pricingConfig);
+
     useEffect(() => {
-        if(user) {
-            getReferenceCodesForUser();
-        }
-    }, [user, getReferenceCodesForUser]);
+        setLocalConfig(pricingConfig);
+    }, [pricingConfig]);
 
     if (!user) return null;
 
-    const renderReferenceCodes = () => {
-        if (!referenceCodes || referenceCodes.length === 0) {
-            return <p className="text-muted-foreground">No reference codes found.</p>;
-        }
+    const handleWordTierChange = (tier: string, value: string) => {
+        if (!localConfig) return;
+        const newConfig = {...localConfig};
+        newConfig.wordTiers[parseInt(tier)] = parseFloat(value) || 0;
+        setLocalConfig(newConfig);
+    }
+    
+    const handleFeeChange = (type: 'agent' | 'super_worker', value: string) => {
+        if (!localConfig) return;
+        const newConfig = {...localConfig};
+        newConfig.fees[type] = parseFloat(value) || 0;
+        setLocalConfig(newConfig);
+    }
 
-        return referenceCodes.map(rc => {
-            if (!rc.role) return null;
-            return (
-                 <p key={rc.code}>
-                    For <span className="capitalize">{rc.role.replace(/_/g, ' ')}s</span>: <span className="font-mono bg-muted p-1 rounded">{rc.code}</span>
-                </p>
-            )
-        }).filter(Boolean);
+    const handleDeadlineTierChange = (tier: string, value: string) => {
+        if (!localConfig) return;
+        const newConfig = {...localConfig};
+        newConfig.deadlineTiers[parseInt(tier)] = parseFloat(value) || 0;
+        setLocalConfig(newConfig);
+    }
+
+    const onSave = () => {
+        if (localConfig) {
+            handleSavePricingConfig(localConfig);
+        }
     }
 
     const wordCountTiers = Array.from({ length: 40 }, (_, i) => (i + 1) * 500);
@@ -52,40 +104,54 @@ export default function SettingsView() {
                                 {wordCountTiers.map(tier => (
                                     <div key={tier} className="grid grid-cols-2 gap-4 items-center">
                                         <Label>{tier} words</Label>
-                                        <Input type="number" placeholder="Price" step="0.01" />
+                                        <Input 
+                                            type="number" 
+                                            placeholder="Price" 
+                                            step="0.01" 
+                                            value={localConfig?.wordTiers[tier] || ''}
+                                            onChange={(e) => handleWordTierChange(String(tier), e.target.value)}
+                                        />
                                     </div>
                                 ))}
                             </div>
                         </ScrollArea>
-                        <Button className="mt-4">Save Pricing</Button>
+                        <Button className="mt-4" onClick={onSave}>Save Pricing</Button>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader>
-                        <CardTitle>Fee Configuration</CardTitle>
-                        <CardDescription>Set fees for agents and super workers.</CardDescription>
+                        <CardTitle>Fee & Deadline Configuration</CardTitle>
+                        <CardDescription>Set fees and deadline surcharges.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4 items-center">
+                        <div className="space-y-2">
                             <Label>Agent Fee (£ per 500 words)</Label>
-                            <Input type="number" placeholder="e.g., 5.00" step="0.01" />
+                            <Input type="number" placeholder="e.g., 5.00" step="0.01" value={localConfig?.fees.agent || ''} onChange={(e) => handleFeeChange('agent', e.target.value)}/>
                             <Label>Super Worker Fee (£ per 500 words)</Label>
-                            <Input type="number" defaultValue="6.25" step="0.01" />
+                            <Input type="number" step="0.01" value={localConfig?.fees.super_worker || ''} onChange={(e) => handleFeeChange('super_worker', e.target.value)}/>
                         </div>
-                        <Button>Save Fees</Button>
+                        <div className="space-y-2 pt-4 border-t">
+                            <Label>Within 1 Day Surcharge (£)</Label>
+                            <Input type="number" step="0.01" value={localConfig?.deadlineTiers[1] || ''} onChange={(e) => handleDeadlineTierChange('1', e.target.value)} />
+                             <Label>Within 3 Days Surcharge (£)</Label>
+                            <Input type="number" step="0.01" value={localConfig?.deadlineTiers[3] || ''} onChange={(e) => handleDeadlineTierChange('3', e.target.value)} />
+                            <Label>Within 7 Days Surcharge (£)</Label>
+                            <Input type="number" step="0.01" value={localConfig?.deadlineTiers[7] || ''} onChange={(e) => handleDeadlineTierChange('7', e.target.value)} />
+                        </div>
+                        <Button onClick={onSave}>Save Fees & Deadlines</Button>
+                    </CardContent>
+                </Card>
+                 <Card>
+                    <CardHeader>
+                        <CardTitle>Reference Code Management</CardTitle>
+                        <CardDescription>View and edit all reference codes in the system.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        <ReferenceCodeManager />
                     </CardContent>
                 </Card>
                 </>
             )}
-             <Card>
-                <CardHeader>
-                    <CardTitle>Reference Codes</CardTitle>
-                    <CardDescription>Your codes to invite new users.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                    {renderReferenceCodes()}
-                </CardContent>
-            </Card>
         </div>
     )
 }
