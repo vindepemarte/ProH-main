@@ -428,7 +428,9 @@ export async function createHomework(
         transactionCommitted = true;
 
     } catch(e) {
-        await client.query('ROLLBACK');
+        if (!transactionCommitted) {
+            await client.query('ROLLBACK');
+        }
         throw e;
     } finally {
         client.release();
@@ -471,7 +473,7 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
             case 'student':
                 userFilter = ` AND student_id = $3`;
                 params.push(user.id);
-                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM(price) as value FROM homeworks WHERE status = 'completed' ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
+                metric1Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, SUM(price) as value FROM homeworks WHERE status NOT IN ('declined', 'refund') ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
                 metric2Query = `SELECT TO_CHAR(deadline, 'YYYY-MM') as month, COUNT(*) as value FROM homeworks WHERE 1=1 ${dateFilter} ${userFilter} GROUP BY 1 ORDER BY 1`;
                 break;
             case 'agent':
@@ -614,10 +616,9 @@ export async function fetchNotificationsForUser(userId: string): Promise<Notific
         let query = "SELECT * FROM notifications WHERE user_id = $1";
         const params: string[] = [userId];
 
-        if (userRole === 'super_agent') {
-            query += " OR user_id = 'super_agent'";
-        } else if (userRole === 'super_worker') {
-            query += " OR user_id = 'super_worker'";
+        if (userRole === 'super_agent' || userRole === 'super_worker') {
+            query += ` OR user_id = $2`;
+            params.push(userRole);
         }
 
         query += " ORDER BY created_at DESC";
