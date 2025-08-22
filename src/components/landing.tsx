@@ -7,18 +7,17 @@ export default function Landing() {
   const { setAuthModalOpen } = useAppContext();
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-grid-teal-500/10">
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center bg-grid-yellow-500/10">
       <div className="absolute top-8">
         <Logo />
       </div>
       <main className="flex flex-col items-center z-10">
         <Image 
-          src="https://placehold.co/400x400.png" 
-          alt="Illustration of students collaborating" 
+          src="/logo.png" 
+          alt="Illustration of a happy book character reading" 
           width={250} 
           height={250} 
-          className="mb-8 rounded-full shadow-2xl"
-          data-ai-hint="happy students"
+          className="mb-8"
           priority
         />
         <h1 className="text-4xl md:text-5xl font-extrabold font-headline text-primary tracking-tight">
@@ -32,8 +31,8 @@ export default function Landing() {
           size="lg"
           onClick={() => setAuthModalOpen(true)}
           style={{
-            backgroundColor: 'hsl(var(--accent))',
-            color: 'hsl(var(--accent-foreground))'
+            backgroundColor: 'hsl(var(--primary))',
+            color: 'hsl(var(--primary-foreground))'
           }}
           >
           Get Started
