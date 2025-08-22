@@ -2,10 +2,9 @@
 'use server';
 
 import { pool } from './db';
-import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, StudentsPerAgent } from './types';
+import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, StudentsPerAgent, HomeworkChangeRequestData, HomeworkChangeRequest } from './types';
 import { differenceInDays, format } from 'date-fns';
 
-// Simple password hashing for dummy data
 const hash = (pwd: string) => `hashed_${pwd}`;
 const compare = (pwd: string, hashed: string) => hash(pwd) === hashed;
 
@@ -84,7 +83,6 @@ export async function createUser(name: string, email: string, pass: string, refC
         
         await client.query('COMMIT');
         
-        // Store details for notification after commit
         if (code.owner_id) {
            notificationOwnerId = code.owner_id;
            newUserName = newUser.name;
@@ -100,11 +98,10 @@ export async function createUser(name: string, email: string, pass: string, refC
     } finally {
         client.release();
         
-        // Create notification after transaction is closed
         if (notificationOwnerId && newUserName && newUserRole) {
              try {
                 await createNotification({
-                    userId: notificationOwnerId, // Notify the person who owns the code
+                    userId: notificationOwnerId, 
                     message: `A new ${newUserRole}, ${newUserName}, has registered using your reference code.`
                 });
             } catch (notificationError) {
@@ -122,7 +119,6 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
     
     switch(user.role) {
         case 'super_agent':
-            // No filter, select all
             break;
         case 'agent':
             query += ' JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1';
@@ -150,6 +146,13 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
         
         const homeworks = await Promise.all(res.rows.map(async (row) => {
             const filesRes = await client.query('SELECT file_name as name, file_url as url FROM homework_files WHERE homework_id = $1', [row.id]);
+            const changeRequestsRes = await client.query('SELECT * FROM homework_change_requests WHERE homework_id = $1 ORDER BY created_at DESC', [row.id]);
+            
+            const changeRequests = await Promise.all(changeRequestsRes.rows.map(async (cr) => {
+                const crFilesRes = await client.query('SELECT file_name as name, file_url as url FROM change_request_files WHERE change_request_id = $1', [cr.id]);
+                return { ...cr, files: crFilesRes.rows };
+            }));
+
             return {
                 ...row,
                 studentId: row.student_id,
@@ -160,7 +163,8 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
                 projectNumber: row.project_number, 
                 wordCount: row.word_count,
                 files: filesRes.rows,
-                earnings: row.earnings
+                earnings: row.earnings,
+                changeRequests: changeRequests,
             };
         }));
 
@@ -173,6 +177,7 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
 export async function modifyHomework(id: string, updates: Partial<Homework>): Promise<void> {
     const client = await pool.connect();
     let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
+    let transactionCommitted = false;
     
     try {
         await client.query('BEGIN');
@@ -195,38 +200,32 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
         }
         
         await client.query('COMMIT');
+        transactionCommitted = true;
 
-        // --- Handle Notifications based on Status Change ---
         if (updates.status && updates.status !== homework.status) {
-            const messageBase = `Homework #${homework.id} status has been updated to "${updates.status.replace(/_/g, ' ')}".`
+            const messageBase = `Homework #${homework.id} status updated to "${updates.status.replace(/_/g, ' ')}".`
             if (updates.status === 'in_progress') {
-                const superWorkerRes = await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
+                 const superWorkerRes = await pool.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
                 if (superWorkerRes.rows.length > 0) {
-                    notificationDetails = { userId: superWorkerRes.rows[0].id, message: `New homework #${homework.id} is ready for assignment.`, homeworkId: id };
+                    notificationDetails = { userId: superWorkerRes.rows[0].id, message: `New homework #${homework.id} is ready.`, homeworkId: id };
                 }
             } else if (updates.status === 'completed') {
-                 notificationDetails = { userId: homework.student_id, message: `${messageBase} Your files are ready for download.`, homeworkId: id };
+                 notificationDetails = { userId: homework.student_id, message: `${messageBase} Your files are ready.`, homeworkId: id };
             } else if (updates.status === 'final_payment_approval') {
-                const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+                const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
                 if (superAgentRes.rows.length > 0) {
-                    notificationDetails = { userId: superAgentRes.rows[0].id, message: `Homework #${homework.id} is ready for final approval.`, homeworkId: id };
+                    notificationDetails = { userId: superAgentRes.rows[0].id, message: `HW #${homework.id} ready for final approval.`, homeworkId: id };
                 }
-            } else if (updates.status === 'requested_changes') {
-                 const superWorkerId = homework.super_worker_id || (await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1")).rows[0]?.id;
-                 if (superWorkerId) {
-                     notificationDetails = { userId: superWorkerId, message: `The student has requested changes for homework #${homework.id}.`, homeworkId: id };
-                 }
-            }
+            } 
         }
 
     } catch (error) {
-        await client.query('ROLLBACK');
+        if (!transactionCommitted) await client.query('ROLLBACK');
         console.error("Error in modifyHomework:", error);
         throw error;
     } finally {
         client.release();
         
-        // Create notification after transaction is closed
         if (notificationDetails) {
             try {
                 await createNotification(notificationDetails);
@@ -236,6 +235,65 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
         }
     }
 }
+
+export async function requestChangesOnHomework(homeworkId: string, data: HomeworkChangeRequestData): Promise<void> {
+    const client = await pool.connect();
+    let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
+    let transactionCommitted = false;
+
+    try {
+        await client.query('BEGIN');
+
+        const homeworkRes = await client.query('SELECT * FROM homeworks WHERE id = $1', [homeworkId]);
+        if (homeworkRes.rows.length === 0) throw new Error("Homework not found");
+        const homework = homeworkRes.rows[0];
+
+        await client.query("UPDATE homeworks SET status = 'requested_changes' WHERE id = $1", [homeworkId]);
+
+        const changeReqRes = await client.query(
+            'INSERT INTO homework_change_requests (homework_id, notes) VALUES ($1, $2) RETURNING id',
+            [homeworkId, data.notes]
+        );
+        const changeRequestId = changeReqRes.rows[0].id;
+
+        if (data.files && data.files.length > 0) {
+            for (const file of data.files) {
+                await client.query(
+                    'INSERT INTO change_request_files (change_request_id, file_name, file_url) VALUES ($1, $2, $3)',
+                    [changeRequestId, file.name, file.url || '']
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        transactionCommitted = true;
+
+        const superWorkerId = homework.super_worker_id || (await pool.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1")).rows[0]?.id;
+        if (superWorkerId) {
+            notificationDetails = {
+                userId: superWorkerId,
+                message: `Student requested changes for homework #${homeworkId}.`,
+                homeworkId: homeworkId
+            };
+        }
+
+    } catch (error) {
+        if (!transactionCommitted) await client.query('ROLLBACK');
+        console.error("Error in requestChangesOnHomework:", error);
+        throw error;
+    } finally {
+        client.release();
+
+        if (notificationDetails) {
+            try {
+                await createNotification(notificationDetails);
+            } catch (notificationError) {
+                console.error("Failed to create notification for change request:", notificationError);
+            }
+        }
+    }
+}
+
 
 export async function fetchWorkersForSuperWorker(superWorkerId: string): Promise<User[]> {
     const client = await pool.connect();
@@ -261,7 +319,6 @@ export async function updateReferenceCode(oldCode: string, newCode: string): Pro
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        // Check if the new code already exists
         const existingCodeRes = await client.query('SELECT * FROM reference_codes WHERE code = $1', [newCode.toUpperCase()]);
         if (existingCodeRes.rows.length > 0) {
             throw new Error(`Reference code "${newCode.toUpperCase()}" already exists.`);
@@ -288,7 +345,7 @@ export async function createReferenceCode(code: string, role: UserRole, ownerId:
             [code.toUpperCase(), role, ownerId]
         );
     } catch (error: any) {
-        if (error.code === '23505') { // Unique violation
+        if (error.code === '23505') { 
             throw new Error(`Reference code "${code.toUpperCase()}" already exists.`);
         }
         throw error;
@@ -310,11 +367,9 @@ export async function createHomework(
     }
 ): Promise<{homework: Homework, message: string}> {
     const client = await pool.connect();
-    // Use a 5-digit random number for the public-facing ID
     const homeworkId = String(Math.floor(10000 + Math.random() * 90000));
     let createdHomework: Homework;
     let message: string;
-    let notificationDetails: { userId: string; message: string; homeworkId: string } | null = null;
     let transactionCommitted = false;
 
     try {
@@ -379,11 +434,10 @@ export async function createHomework(
         client.release();
     }
     
-    // Create notification only after transaction is successfully closed
     if (transactionCommitted) {
         const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
         if (superAgentRes.rows.length > 0) {
-            notificationDetails = {
+            const notificationDetails = {
                 userId: superAgentRes.rows[0].id,
                 message: `New homework #${homeworkId} from ${student.name} requires payment approval.`,
                 homeworkId: homeworkId
@@ -560,7 +614,6 @@ export async function fetchNotificationsForUser(userId: string): Promise<Notific
         let query = "SELECT * FROM notifications WHERE user_id = $1";
         const params: string[] = [userId];
 
-        // Super roles can see notifications for their role group
         if (userRole === 'super_agent') {
             query += " OR user_id = 'super_agent'";
         } else if (userRole === 'super_worker') {

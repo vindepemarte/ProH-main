@@ -36,10 +36,10 @@ function ReferenceCodeManager() {
     return referenceCodes.map(rc => {
          if (!rc.role) return null;
          return (
-             <div key={rc.code} className="flex items-center gap-4">
-                 <Label className="w-48">For <span className="capitalize">{rc.role.replace(/_/g, ' ')}s</span>:</Label>
+             <div key={rc.code} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                 <Label className="w-full sm:w-48">For <span className="capitalize">{rc.role.replace(/_/g, ' ')}s</span>:</Label>
                  <Input 
-                    className="font-mono"
+                    className="font-mono flex-grow"
                     value={editingCodes[rc.code] || rc.code}
                     onChange={(e) => handleCodeChange(rc.code, e.target.value)}
                  />
@@ -80,7 +80,7 @@ function CreateReferenceCode() {
                 <CardDescription>Create a new reference code and assign it to a user.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label>New Code</Label>
                         <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. AGENT01" />

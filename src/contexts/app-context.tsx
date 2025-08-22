@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole, SuperAgentDashboardStats } from '@/lib/types';
+import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, HomeworkChangeRequestData } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import { 
   fetchUsers, 
@@ -24,6 +24,7 @@ import {
   markNotificationsAsRead,
   createReferenceCode,
   getSuperAgentDashboardStats,
+  requestChangesOnHomework as requestChangesAction,
 } from '@/lib/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DateRange } from 'react-day-picker';
@@ -52,6 +53,7 @@ interface AppContextType {
         notes: string;
         files: { name: string; url: string }[];
     }) => Promise<void>;
+  requestChangesOnHomework: (homeworkId: string, data: HomeworkChangeRequestData) => Promise<void>;
 
   selectedHomework: Homework | null;
   setSelectedHomework: (homework: Homework | null) => void;
@@ -59,6 +61,9 @@ interface AppContextType {
   setIsHomeworkModalOpen: (open: boolean) => void;
   isNewHomeworkModalOpen: boolean;
   setIsNewHomeworkModalOpen: (open: boolean) => void;
+  isRequestChangesModalOpen: boolean;
+  setIsRequestChangesModalOpen: (open: boolean) => void;
+
 
   workers: User[];
   referenceCodes: ReferenceCode[];
@@ -98,6 +103,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [isHomeworkModalOpen, setIsHomeworkModalOpen] = useState(false);
   const [isNewHomeworkModalOpen, setIsNewHomeworkModalOpen] = useState(false);
+  const [isRequestChangesModalOpen, setIsRequestChangesModalOpen] = useState(false);
   const [selectedHomework, setSelectedHomework] = useState<Homework | null>(null);
   const [workers, setWorkers] = useState<User[]>([]);
   const [referenceCodes, setReferenceCodes] = useState<ReferenceCode[]>([]);
@@ -183,10 +189,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     try {
       await markNotificationsAsRead(user.id);
-      // Optimistically update the UI
       setUnreadNotificationCount(0);
       setNotifications(notifications.map(n => ({ ...n, is_read: true })));
-      // Re-fetch for consistency
       await fetchUserNotifications();
     } catch (error) {
       console.error(error);
@@ -246,7 +250,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (user) {
-      fetchAllData(); // Fetch initial data
+      fetchAllData(); 
       fetchPricingConfig();
       
       if (user.role === 'super_worker') {
@@ -257,12 +261,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fetchUsers().then(setAllUsers);
       }
       
-      // Set up polling
-      const intervalId = setInterval(fetchAllData, 30000); // Poll every 30 seconds
+      const intervalId = setInterval(fetchAllData, 30000); 
       
-      return () => clearInterval(intervalId); // Cleanup on logout or unmount
+      return () => clearInterval(intervalId); 
     } else {
-      // Clear all data on logout
       setHomeworks([]);
       setWorkers([]);
       setReferenceCodes([]);
@@ -326,12 +328,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (selectedHomework && selectedHomework.id === id) {
             setSelectedHomework({ ...selectedHomework, ...updates });
         }
-        toast({ title: "Homework Updated", description: `Homework #${id.split('_')[1]} has been updated.` });
+        toast({ title: "Homework Updated", description: `Homework #${id} has been updated.` });
     } catch (error) {
         console.error(error);
         toast({ variant: 'destructive', title: "Error", description: "Could not update homework." });
     }
   }
+
+  const requestChangesOnHomework = async (homeworkId: string, data: HomeworkChangeRequestData) => {
+      try {
+          await requestChangesAction(homeworkId, data);
+          await getHomeworksForUser();
+          toast({ title: "Changes Requested", description: "Your request has been submitted to the worker." });
+      } catch (error) {
+          console.error(error);
+          toast({ variant: 'destructive', title: "Error", description: "Could not submit your request." });
+      }
+  };
 
   const submitHomework = async (data: {
         moduleName: string;
@@ -379,12 +392,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     getHomeworksForUser,
     updateHomework,
     submitHomework,
+    requestChangesOnHomework,
     selectedHomework,
     setSelectedHomework,
     isHomeworkModalOpen,
     setIsHomeworkModalOpen,
     isNewHomeworkModalOpen,
     setIsNewHomeworkModalOpen,
+    isRequestChangesModalOpen,
+    setIsRequestChangesModalOpen,
     workers,
     referenceCodes,
     fetchAllCodes,

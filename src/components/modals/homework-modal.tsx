@@ -4,13 +4,12 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { useAppContext } from "@/contexts/app-context"
 import { Badge } from "../ui/badge"
 import { cn } from "@/lib/utils"
-import { HomeworkStatus } from "@/lib/types"
+import { HomeworkStatus, HomeworkChangeRequest } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
-import { FileDown, Paperclip, PencilRuler } from "lucide-react"
+import { FileDown, Paperclip, PencilRuler, History, MessageSquare, Check } from "lucide-react"
 import { ScrollArea } from "../ui/scroll-area"
 
 const statusColors: Record<HomeworkStatus, string> = {
@@ -30,8 +29,35 @@ interface HomeworkModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+function ChangeRequestHistory({ requests }: { requests: HomeworkChangeRequest[] }) {
+    if (!requests || requests.length === 0) return null;
+
+    return (
+        <div className="mt-4 pt-4 border-t">
+            <h3 className="flex items-center gap-2 font-semibold mb-2"><History className="w-5 h-5"/> Change History</h3>
+            <div className="space-y-4">
+                {requests.map((req) => (
+                    <div key={req.id} className="p-3 bg-muted/50 rounded-lg">
+                        <p className="text-xs text-muted-foreground font-medium">{new Date(req.created_at).toLocaleString()}</p>
+                        {req.notes && <p className="mt-1 flex gap-2"><MessageSquare className="w-4 h-4 mt-0.5 shrink-0"/> {req.notes}</p>}
+                        {req.files && req.files.length > 0 && (
+                            <div className="mt-2 flex flex-col gap-2">
+                                {req.files.map((file, i) => (
+                                     <Button key={i} variant="outline" size="sm" className="justify-start gap-2">
+                                        <Paperclip className="w-4 h-4"/> {file.name}
+                                    </Button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
+}
+
 export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps) {
-    const { user, selectedHomework: hw, workers, updateHomework } = useAppContext();
+    const { user, selectedHomework: hw, workers, updateHomework, setIsRequestChangesModalOpen } = useAppContext();
 
     if (!hw || !user) return null;
 
@@ -39,20 +65,25 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
         updateHomework(hw.id, { status });
     }
 
-    const handleRequestChanges = () => {
-        updateHomework(hw.id, { status: 'requested_changes' });
+    const handleAcceptChanges = () => {
+        updateHomework(hw.id, { status: 'in_progress' });
     }
 
     const handleAssignWorker = (workerId: string) => {
         updateHomework(hw.id, { workerId });
     }
 
+    const openRequestChangesModal = () => {
+        onOpenChange(false); // Close current modal
+        setIsRequestChangesModalOpen(true); // Open request changes modal
+    }
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-sm">
                 <DialogHeader>
-                    <div className="flex justify-between items-center">
-                        <DialogTitle className="text-2xl">Homework #{hw.id}</DialogTitle>
+                    <div className="flex justify-between items-center flex-wrap gap-2">
+                        <DialogTitle className="text-xl sm:text-2xl">Homework #{hw.id}</DialogTitle>
                         <Badge variant="outline" className={cn("capitalize", statusColors[hw.status])}>{hw.status.replace(/_/g, ' ')}</Badge>
                     </div>
                     <DialogDescription>{hw.moduleName}</DialogDescription>
@@ -67,10 +98,10 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                     </div>
                     <div>
                         <Label>Notes for Worker</Label>
-                        <p className="text-sm p-3 bg-muted rounded-md min-h-[60px]">{hw.notes}</p>
+                        <p className="text-sm p-3 bg-muted rounded-md min-h-[60px] whitespace-pre-wrap">{hw.notes}</p>
                     </div>
                     <div>
-                        <Label>Files</Label>
+                        <Label>Original Files</Label>
                         {hw.files && hw.files.length > 0 ? (
                             <div className="flex flex-col gap-2 mt-2">
                                 {hw.files.map((file, i) => (
@@ -82,7 +113,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         ) : <p className="text-sm text-muted-foreground">No files uploaded.</p>}
                     </div>
 
-                    {/* Role-specific views */}
+                     {/* Role-specific views */}
                     {user.role === 'super_agent' && hw.earnings && (
                         <div className="p-4 bg-primary/10 rounded-lg space-y-2 mt-4">
                             <h3 className="font-bold">Financials</h3>
@@ -107,6 +138,10 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                     {(user.role === 'worker') && <div className="hidden"></div>}
 
 
+                    {/* Change Request History */}
+                    {hw.changeRequests && <ChangeRequestHistory requests={hw.changeRequests} />}
+
+
                     {/* Role-specific actions */}
                     <div className="mt-4 pt-4 border-t">
                     {user.role === 'super_agent' && (
@@ -126,27 +161,32 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         </div>
                     )}
                     {user.role === 'super_worker' && (
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
+                             {hw.status === 'requested_changes' && (
+                                <Button className="w-full sm:w-auto" onClick={handleAcceptChanges}><Check className="mr-2"/> Accept Changes</Button>
+                            )}
                             <Select onValueChange={handleAssignWorker} defaultValue={hw.workerId}>
-                                <SelectTrigger>
+                                <SelectTrigger className="w-full sm:w-auto flex-grow">
                                     <SelectValue placeholder="Assign to worker..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {workers.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
-                            <Button variant="outline">Request Word Count</Button>
-                            <Button variant="outline">Request Deadline</Button>
+                            <Button variant="outline" className="w-full sm:w-auto">Request Word Count</Button>
+                            <Button variant="outline" className="w-full sm:w-auto">Request Deadline</Button>
                         </div>
                     )}
                     {user.role === 'student' && (
                         <div className="flex flex-col gap-2">
                             {hw.status === 'completed' && <Button className="w-full gap-2"><FileDown/> Download Final Work</Button>}
-                            <Button variant="outline" className="w-full gap-2" onClick={handleRequestChanges}><PencilRuler /> Request Changes</Button>
+                            {['in_progress', 'completed'].includes(hw.status) && (
+                                <Button variant="outline" className="w-full gap-2" onClick={openRequestChangesModal}><PencilRuler /> Request Changes</Button>
+                            )}
                         </div>
                     )}
                     {(user.role === 'student' && ['word_count_change', 'deadline_change'].includes(hw.status)) && (
-                        <div className="flex gap-2 mt-2">
+                        <div className="flex flex-col sm:flex-row gap-2 mt-2">
                             <Button className="w-full" variant="destructive">Decline</Button>
                             <Button className="w-full">Approve</Button>
                         </div>

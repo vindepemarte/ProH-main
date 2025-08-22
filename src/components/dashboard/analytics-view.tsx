@@ -27,7 +27,7 @@ function SuperAgentKPIs() {
     ]
 
     return (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
             {kpis.map(kpi => (
                 <Card key={kpi.title}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -125,12 +125,12 @@ export default function AnalyticsView() {
 
     return (
         <div className="p-4 space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                  <h2 className="text-2xl font-bold">Analytics</h2>
-                 <div className="flex items-center gap-2">
+                 <div className="flex flex-wrap items-center justify-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setPresetRange(0)}>Today</Button>
-                    <Button variant="outline" size="sm" onClick={() => setPresetRange(7)}>Last 7 Days</Button>
-                    <Button variant="outline" size="sm" onClick={() => setPresetRange(30)}>Last 30 Days</Button>
+                    <Button variant="outline" size="sm" onClick={() => setPresetRange(7)}>7D</Button>
+                    <Button variant="outline" size="sm" onClick={() => setPresetRange(30)}>30D</Button>
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button
@@ -161,7 +161,7 @@ export default function AnalyticsView() {
                                 defaultMonth={date?.from}
                                 selected={date}
                                 onSelect={handleDateRangeChange}
-                                numberOfMonths={2}
+                                numberOfMonths={1}
                             />
                         </PopoverContent>
                     </Popover>
@@ -173,7 +173,7 @@ export default function AnalyticsView() {
             {chartData.length === 0 ? (
                 <Card>
                     <CardContent className="pt-6">
-                        <p className="text-muted-foreground text-center">No analytics data available yet for the selected period.</p>
+                        <p className="text-muted-foreground text-center">No analytics data available for the selected period.</p>
                     </CardContent>
                 </Card>
             ) : (

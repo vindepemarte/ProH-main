@@ -12,9 +12,10 @@ import HomeworkModal from "./modals/homework-modal";
 import NewHomeworkModal from "./modals/new-homework-modal";
 import { PlusCircle } from "lucide-react";
 import { Badge } from "./ui/badge";
+import RequestChangesModal from "./modals/request-changes-modal";
 
 export default function Dashboard() {
-    const { user, isHomeworkModalOpen, setIsHomeworkModalOpen, isNewHomeworkModalOpen, setIsNewHomeworkModalOpen, unreadNotificationCount, handleMarkNotificationsAsRead } = useAppContext();
+    const { user, isHomeworkModalOpen, setIsHomeworkModalOpen, isNewHomeworkModalOpen, setIsNewHomeworkModalOpen, unreadNotificationCount, handleMarkNotificationsAsRead, isRequestChangesModalOpen, setIsRequestChangesModalOpen } = useAppContext();
 
     if (!user) return null;
 
@@ -25,11 +26,11 @@ export default function Dashboard() {
     }
 
     return (
-        <div className="min-h-screen bg-background pb-16">
-            <header className="p-4 border-b flex justify-between items-center">
+        <div className="min-h-screen bg-background pb-20 sm:pb-16">
+            <header className="p-4 border-b flex flex-col sm:flex-row justify-between items-center gap-2">
                 <div>
-                    <h1 className="text-2xl font-bold text-primary">Welcome, {user.name}</h1>
-                    <p className="text-muted-foreground capitalize">{user.role.replace(/_/g, ' ')} Dashboard</p>
+                    <h1 className="text-xl sm:text-2xl font-bold text-primary text-center sm:text-left">Welcome, {user.name}</h1>
+                    <p className="text-muted-foreground capitalize text-center sm:text-left">{user.role.replace(/_/g, ' ')} Dashboard</p>
                 </div>
                  {user.role === 'student' && (
                     <Button onClick={() => setIsNewHomeworkModalOpen(true)}>
@@ -38,20 +39,22 @@ export default function Dashboard() {
                 )}
             </header>
             <Tabs defaultValue="homeworks" className="w-full" onValueChange={onTabChange}>
-                <TabsList className="m-4">
-                    <TabsTrigger value="homeworks">Homeworks</TabsTrigger>
-                    <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                    <TabsTrigger value="notifications" className="relative">
-                        Notifications
-                        {unreadNotificationCount > 0 && (
-                            <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 bg-red-500 text-white">
-                                {unreadNotificationCount}
-                            </Badge>
-                        )}
-                    </TabsTrigger>
-                    {(user.role === 'super_agent') && <TabsTrigger value="settings">Settings</TabsTrigger>}
-                    {user.role === 'super_agent' && <TabsTrigger value="users">Users</TabsTrigger>}
-                </TabsList>
+                <div className="px-4">
+                  <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:inline-flex">
+                      <TabsTrigger value="homeworks">Homeworks</TabsTrigger>
+                      <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                      <TabsTrigger value="notifications" className="relative">
+                          Notifications
+                          {unreadNotificationCount > 0 && (
+                              <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 bg-red-500 text-white">
+                                  {unreadNotificationCount}
+                              </Badge>
+                          )}
+                      </TabsTrigger>
+                      {(user.role === 'super_agent') && <TabsTrigger value="settings">Settings</TabsTrigger>}
+                      {user.role === 'super_agent' && <TabsTrigger value="users">Users</TabsTrigger>}
+                  </TabsList>
+                </div>
 
                 <TabsContent value="homeworks">
                     <HomeworkList />
@@ -75,6 +78,7 @@ export default function Dashboard() {
             </Tabs>
             <HomeworkModal open={isHomeworkModalOpen} onOpenChange={setIsHomeworkModalOpen} />
             <NewHomeworkModal open={isNewHomeworkModalOpen} onOpenChange={setIsNewHomeworkModalOpen} />
+            <RequestChangesModal open={isRequestChangesModalOpen} onOpenChange={setIsRequestChangesModalOpen} />
         </div>
     );
 }

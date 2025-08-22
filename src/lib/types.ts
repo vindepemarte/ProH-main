@@ -40,6 +40,19 @@ export interface HomeworkFile {
     uploaded_at: Date;
 }
 
+export interface HomeworkChangeRequest {
+    id: number;
+    homework_id: string;
+    notes: string;
+    created_at: Date;
+    files?: { name: string; url: string }[];
+}
+
+export interface HomeworkChangeRequestData {
+    notes: string;
+    files: { name: string; url: string }[];
+}
+
 export interface Homework {
   id: string;
   studentId: string;
@@ -59,7 +72,8 @@ export interface Homework {
     agent?: number;
     super_worker?: number;
     profit: number;
-  }
+  },
+  changeRequests?: HomeworkChangeRequest[];
 }
 
 export interface Notification {
