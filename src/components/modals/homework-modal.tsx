@@ -11,7 +11,6 @@ import { HomeworkStatus, HomeworkChangeRequest } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { FileDown, Paperclip, PencilRuler, History, MessageSquare, Check, AlertCircle, Upload } from "lucide-react"
 import { ScrollArea } from "../ui/scroll-area"
-import { useState, useEffect } from "react"
 
 const statusColors: Record<HomeworkStatus, string> = {
   payment_approval: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30",
@@ -98,26 +97,7 @@ function ChangeRequestHistory({ requests, user, handleFileDownload }: { requests
 
 export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps) {
     const { user, selectedHomework: hw, workers, updateHomework, setIsRequestChangesModalOpen, setIsSuperWorkerChangeModalOpen, setIsFileUploadModalOpen, pricingConfig } = useAppContext();
-    const [currentPricing, setCurrentPricing] = useState<{ basePrice: number; agentFee: number; superWorkerFee: number; profit: number } | null>(null);
 
-    // Calculate current pricing based on homework and current config
-    useEffect(() => {
-        if (hw && pricingConfig && user?.role === 'super_agent') {
-            const agentFeePer500 = pricingConfig.fees.agent;
-            const superWorkerFeePer500 = pricingConfig.fees.super_worker;
-            const agentFee = agentFeePer500 * (hw.wordCount / 500);
-            const superWorkerFee = superWorkerFeePer500 * (hw.wordCount / 500);
-            const basePrice = Number(hw.price || 0);
-            const profit = basePrice - agentFee - superWorkerFee;
-            
-            setCurrentPricing({
-                basePrice,
-                agentFee: hw.earnings?.agent ? agentFee : 0,
-                superWorkerFee,
-                profit
-            });
-        }
-    }, [hw, pricingConfig, user?.role]);
 
     if (!hw || !user) return null;
 
@@ -350,36 +330,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                             </p>
                         </div>
                     )}
-                    
-                    {/* Super Agent: Current Pricing Breakdown with Real-time Updates */}
-                    {user.role === 'super_agent' && currentPricing && pricingConfig && (
-                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3 mt-4">
-                            <h3 className="font-bold text-blue-900">Current Pricing Configuration</h3>
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                    <p className="text-muted-foreground">Total Price:</p>
-                                    <p className="font-semibold">£{currentPricing.basePrice.toFixed(2)}</p>
-                                </div>
-                                {currentPricing.agentFee > 0 && (
-                                    <div>
-                                        <p className="text-muted-foreground">Agent Fee:</p>
-                                        <p className="font-semibold text-orange-600">-£{currentPricing.agentFee.toFixed(2)}</p>
-                                    </div>
-                                )}
-                                <div>
-                                    <p className="text-muted-foreground">Super Worker Fee:</p>
-                                    <p className="font-semibold text-orange-600">-£{currentPricing.superWorkerFee.toFixed(2)}</p>
-                                </div>
-                                <div>
-                                    <p className="text-muted-foreground">Platform Profit:</p>
-                                    <p className="font-semibold text-green-600">£{currentPricing.profit.toFixed(2)}</p>
-                                </div>
-                            </div>
-                            <p className="text-xs text-blue-700 mt-2">
-                                * Based on current settings: £{pricingConfig.fees.agent}/500 words (agent), £{pricingConfig.fees.super_worker}/500 words (super worker)
-                            </p>
-                        </div>
-                    )}
+
                     {user.role === 'agent' && hw.agentId === user.id && hw.earnings?.agent && hw.earnings.agent > 0 && (
                          <div className="p-4 bg-primary/10 rounded-lg space-y-2 mt-4">
                             <h3 className="font-bold">Your Earnings</h3>

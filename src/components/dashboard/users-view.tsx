@@ -30,16 +30,16 @@ export default function UsersView() {
           <CardTitle>All Users ({allUsers.length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {/* Mobile-optimized scrollable container */}
-          <ScrollArea className="h-[calc(100vh-280px)] w-full">
+          {/* Mobile-optimized scrollable container with improved height calculation */}
+          <ScrollArea className="h-[calc(100vh-320px)] min-h-[400px] w-full">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="min-w-[120px]">Name</TableHead>
-                    <TableHead className="min-w-[180px]">Email</TableHead>
-                    <TableHead className="min-w-[140px]">Role</TableHead>
-                    <TableHead className="min-w-[120px]">Referred By</TableHead>
+                    <TableHead className="min-w-[120px] sticky top-0 bg-background">Name</TableHead>
+                    <TableHead className="min-w-[180px] sticky top-0 bg-background">Email</TableHead>
+                    <TableHead className="min-w-[140px] sticky top-0 bg-background">Role</TableHead>
+                    <TableHead className="min-w-[120px] sticky top-0 bg-background">Referred By</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

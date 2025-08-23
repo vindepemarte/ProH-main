@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
 
 // Mark this route as dynamic to prevent build-time execution
 export const dynamic = 'force-dynamic';
@@ -7,6 +6,23 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   try {
+    // Check if database URL is available
+    if (!process.env.POSTGRES_URL) {
+      return NextResponse.json({ 
+        status: 'degraded',
+        timestamp: new Date().toISOString(),
+        services: {
+          database: 'not_configured',
+          server: 'running'
+        },
+        message: 'Database URL not configured'
+      }, { status: 200 });
+    }
+
+    // Lazy load database pool to avoid build-time execution
+    const { getPool } = await import('@/lib/db');
+    const pool = getPool();
+    
     // Test database connection
     const client = await pool.connect();
     await client.query('SELECT 1');
