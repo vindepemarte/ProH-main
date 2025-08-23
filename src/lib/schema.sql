@@ -37,7 +37,10 @@ CREATE TABLE IF NOT EXISTS homework_files (
     homework_id VARCHAR(255) NOT NULL REFERENCES homeworks(id) ON DELETE CASCADE,
     file_name VARCHAR(255) NOT NULL,
     file_url TEXT,
-    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    uploaded_by VARCHAR(255) REFERENCES users(id),
+    file_type VARCHAR(50) DEFAULT 'student_original',
+    is_latest BOOLEAN DEFAULT TRUE
 );
 
 CREATE TABLE IF NOT EXISTS notifications (
@@ -46,7 +49,17 @@ CREATE TABLE IF NOT EXISTS notifications (
     message TEXT NOT NULL,
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    homework_id VARCHAR(255)
+    homework_id VARCHAR(255),
+    source VARCHAR(20) DEFAULT 'system'
+);
+
+CREATE TABLE IF NOT EXISTS notification_templates (
+    template_id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    template TEXT NOT NULL,
+    variables JSONB NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS pricing_config (
@@ -105,4 +118,105 @@ BEGIN
           }
       }');
    END IF;
+END $$;
+
+-- Seed default notification templates
+DO $$
+BEGIN
+   -- Insert only if the specific template doesn't exist
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'new_homework') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('new_homework', 'New Homework Submission', 'Sent when a student submits new homework', 'New homework #{homeworkId} from {studentName} requires payment approval.', '["homeworkId", "studentName"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'user_registration') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('user_registration', 'User Registration', 'Sent when a new user registers with a reference code', 'New user registration: {userName} ({userRole}) has joined the platform.', '["userName", "userRole"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'role_change') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('role_change', 'Role Change', 'Sent when user role is changed', 'An administrator has changed your role to {newRole}.', '["newRole"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'status_update') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('status_update', 'Homework Status Update', 'Sent when homework status changes', 'Homework #{homeworkId} status updated to "{status}".', '["homeworkId", "status"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'homework_in_progress') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('homework_in_progress', 'Homework In Progress', 'Sent when homework is marked as in progress', 'Homework #{homeworkId} is now in progress.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'worker_assignment') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('worker_assignment', 'Worker Assignment', 'Sent when a worker is assigned to homework', 'You have been assigned homework #{homeworkId}.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'final_payment_approval') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('final_payment_approval', 'Final Payment Approval', 'Sent when homework requires final payment approval', 'Homework #{homeworkId} requires final payment approval.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'final_review') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('final_review', 'Final Review', 'Sent when homework is being reviewed for final approval', 'Your homework #{homeworkId} is being reviewed for final approval.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'homework_completed') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('homework_completed', 'Homework Completed (Student)', 'Sent to student when homework is completed', 'Your homework #{homeworkId} has been completed and final files are ready for download.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'homework_completed_agent') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('homework_completed_agent', 'Homework Completed (Agent)', 'Sent to agent when homework is completed', 'Homework #{homeworkId} has been completed successfully.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'homework_completed_super_agent') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('homework_completed_super_agent', 'Homework Completed (Super Agent)', 'Sent to super agent when homework is completed', 'Homework #{homeworkId} has been completed and finalized.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'change_request') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('change_request', 'Student Change Request', 'Sent when student requests changes to homework', 'Student has requested changes for homework #{homeworkId}.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'super_worker_change_request') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('super_worker_change_request', 'Super Worker Change Request', 'Sent when super worker requests changes to homework', 'Super Worker requested change to {changeDescription} for homework #{homeworkId}.{priceInfo}', '["homeworkId", "changeDescription", "priceInfo"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'file_upload') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('file_upload', 'File Upload Notification', 'Sent when files are uploaded in the workflow', 'Files have been uploaded for homework #{homeworkId}.', '["homeworkId", "fileType"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'worker_draft_upload') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('worker_draft_upload', 'Worker Draft Upload', 'Sent when worker uploads draft files', 'Worker has uploaded draft files for homework #{homeworkId}. Ready for super worker review.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'super_worker_review_upload') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('super_worker_review_upload', 'Super Worker Review Upload', 'Sent when super worker uploads reviewed files', 'Super Worker has reviewed and uploaded files for homework #{homeworkId}. Ready for final approval.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'final_files_ready') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('final_files_ready', 'Final Files Ready', 'Sent when final files are ready for download', 'Your homework #{homeworkId} has been completed and final files are ready for download.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'payment_approval') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('payment_approval', 'Payment Approval', 'Sent when homework requires payment approval', 'Homework #{homeworkId} requires final payment approval.', '["homeworkId"]');
+   END IF;
+   
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'completed') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('completed', 'Homework Completed', 'Sent when homework is completed', 'Your homework #{homeworkId} has been completed and final files are ready for download.', '["homeworkId"]');
+   END IF;
+   
 END $$;

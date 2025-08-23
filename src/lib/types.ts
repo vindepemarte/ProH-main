@@ -39,6 +39,9 @@ export interface HomeworkFile {
     file_name: string;
     file_url: string;
     uploaded_at: Date;
+    uploaded_by?: string;
+    file_type?: 'student_original' | 'worker_draft' | 'super_worker_review' | 'final_approved';
+    is_latest?: boolean;
 }
 
 export interface HomeworkChangeRequest {
@@ -66,7 +69,11 @@ export interface Homework {
   wordCount: number;
   deadline: Date;
   notes: string;
-  files?: { name: string; url: string }[];
+  files?: { name: string; url: string }[]; // Original student files
+  draftFiles?: any[]; // Worker draft files
+  reviewedFiles?: any[]; // Super worker reviewed files
+  finalFiles?: any[]; // Final approved files
+  allFiles?: any[]; // All files for comprehensive view
   price?: number;
   earnings?: {
     total: number;
@@ -84,6 +91,7 @@ export interface Notification {
     is_read: boolean;
     created_at: Date;
     homework_id: string | null;
+    source?: 'system' | 'broadcast'; // New field to distinguish notification types
 }
 
 export interface AnalyticsData {
@@ -94,6 +102,13 @@ export interface AnalyticsData {
 export interface StudentsPerAgent {
   agentName: string;
   studentCount: number;
+  toBePaid: number; // Current month payments
+}
+
+export interface SuperWorkersData {
+  superWorkerName: string;
+  toBePaid: number; // Current month payments
+  assignmentsDone: number; // Completed assignments
 }
 
 export interface SuperAgentDashboardStats {
@@ -101,7 +116,11 @@ export interface SuperAgentDashboardStats {
     totalProfit: number;
     totalStudents: number;
     averageProfitPerHomework: number;
+    totalPlatformFees: number;
+    toBePaidSuperWorker: number; // New field
+    toBePaidAgents: number; // New field
     studentsPerAgent: StudentsPerAgent[];
+    superWorkersData: SuperWorkersData[]; // New field
 }
 
 export interface WordTier {
@@ -121,6 +140,49 @@ export interface PricingConfig {
     wordTiers: WordTier;
     fees: FeeTier;
     deadlineTiers: DeadlineTier;
+}
+
+export interface NotificationTemplate {
+    id: string;
+    name: string;
+    description: string;
+    template: string;
+    variables: string[]; // Available variables like {studentName}, {homeworkId}, etc.
+}
+
+export interface NotificationTemplates {
+    // User Management
+    newHomeworkSubmission: NotificationTemplate;
+    userRegistration: NotificationTemplate;
+    roleChange: NotificationTemplate;
+    
+    // Status Updates - Generic
+    homeworkStatusUpdate: NotificationTemplate;
+    
+    // Status Updates - Specific
+    homeworkInProgress: NotificationTemplate;
+    workerAssignment: NotificationTemplate;
+    finalPaymentApproval: NotificationTemplate;
+    finalReview: NotificationTemplate;
+    homeworkCompleted: NotificationTemplate;
+    homeworkCompletedAgent: NotificationTemplate;
+    homeworkCompletedSuperAgent: NotificationTemplate;
+    
+    // Change Requests
+    changeRequest: NotificationTemplate;
+    superWorkerChangeRequest: NotificationTemplate;
+    
+    // File Operations
+    fileUpload: NotificationTemplate;
+    workerDraftUpload: NotificationTemplate;
+    superWorkerReviewUpload: NotificationTemplate;
+    finalFilesReady: NotificationTemplate;
+    
+    // Payment Operations
+    paymentApproval: NotificationTemplate;
+    
+    // Legacy - keep for backward compatibility
+    completed: NotificationTemplate;
 }
 
     

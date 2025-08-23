@@ -4,11 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { useAppContext } from "@/contexts/app-context"
 import { useEffect, useMemo, useState } from "react"
 import { ScrollArea } from "../ui/scroll-area"
-import type { PricingConfig, UserRole } from "@/lib/types"
+import type { PricingConfig, UserRole, NotificationTemplates } from "@/lib/types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
+import { Badge } from "../ui/badge"
+import { AlertCircle, Save } from "lucide-react"
+import { Alert, AlertDescription } from "../ui/alert"
+import { getNotificationTemplates, saveNotificationTemplates } from "@/lib/actions"
 
 function ReferenceCodeManager() {
     const { referenceCodes, fetchAllCodes, handleUpdateReferenceCode } = useAppContext();
@@ -83,7 +88,7 @@ function CreateReferenceCode() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label>New Code</Label>
-                        <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. AGENT01" />
+                        <Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. AGNT" />
                     </div>
                     <div className="space-y-2">
                         <Label>Grants Role</Label>
@@ -126,6 +131,132 @@ function CreateReferenceCode() {
     )
 }
 
+function NotificationTemplateManager() {
+    const { user, toast } = useAppContext();
+    const [templates, setTemplates] = useState<NotificationTemplates | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+
+    useEffect(() => {
+        loadTemplates();
+    }, []);
+
+    const loadTemplates = async () => {
+        try {
+            setLoading(true);
+            const data = await getNotificationTemplates();
+            setTemplates(data);
+        } catch (error) {
+            console.error('Error loading templates:', error);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to load notification templates.' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSaveTemplates = async () => {
+        if (!templates) return;
+        
+        try {
+            setSaving(true);
+            await saveNotificationTemplates(templates);
+            toast({ title: 'Success', description: 'Notification templates saved successfully.' });
+            setEditingTemplate(null);
+        } catch (error) {
+            console.error('Error saving templates:', error);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to save notification templates.' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleTemplateChange = (templateKey: keyof NotificationTemplates, newTemplate: string) => {
+        if (!templates) return;
+        
+        setTemplates({
+            ...templates,
+            [templateKey]: {
+                ...templates[templateKey],
+                template: newTemplate
+            }
+        });
+    };
+
+    if (user?.role !== 'super_agent') return null;
+    if (loading) return <div>Loading templates...</div>;
+    if (!templates) return <div>Error loading templates</div>;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Notification Template Customization</CardTitle>
+                <CardDescription>
+                    Customize automatic notification templates sent throughout the system. Use variables like {'{homeworkId}'}, {'{studentName}'}, etc.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                        These templates are used for automatic notifications. Be careful when editing to ensure all necessary information is included.
+                    </AlertDescription>
+                </Alert>
+                
+                <ScrollArea className="h-96">
+                    <div className="space-y-4">
+                        {Object.entries(templates).map(([key, template]) => (
+                            <div key={key} className="border rounded-lg p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="font-semibold">{template.name}</h4>
+                                        <p className="text-sm text-muted-foreground">{template.description}</p>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setEditingTemplate(editingTemplate === key ? null : key)}
+                                    >
+                                        {editingTemplate === key ? 'Cancel' : 'Edit'}
+                                    </Button>
+                                </div>
+                                
+                                <div className="flex flex-wrap gap-1 mb-2">
+                                    <span className="text-xs text-muted-foreground">Available variables:</span>
+                                    {template.variables.map((variable: string) => (
+                                        <Badge key={variable} variant="secondary" className="text-xs">
+                                            {'{' + variable + '}'}
+                                        </Badge>
+                                    ))}
+                                </div>
+                                
+                                {editingTemplate === key ? (
+                                    <Textarea
+                                        value={template.template}
+                                        onChange={(e) => handleTemplateChange(key as keyof NotificationTemplates, e.target.value)}
+                                        placeholder="Enter template message..."
+                                        className="min-h-[80px]"
+                                    />
+                                ) : (
+                                    <div className="bg-muted/50 p-3 rounded text-sm font-mono">
+                                        {template.template}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </ScrollArea>
+                
+                <div className="flex justify-end">
+                    <Button onClick={handleSaveTemplates} disabled={saving || !editingTemplate}>
+                        <Save className="mr-2 h-4 w-4" />
+                        {saving ? 'Saving...' : 'Save Templates'}
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
 
 export default function SettingsView() {
     const { user, pricingConfig, handleSavePricingConfig } = useAppContext();
@@ -196,6 +327,7 @@ export default function SettingsView() {
                         <Button className="mt-4" onClick={onSave}>Save Pricing</Button>
                     </CardContent>
                 </Card>
+                <NotificationTemplateManager />
                 <Card>
                     <CardHeader>
                         <CardTitle>Fee & Deadline Configuration</CardTitle>

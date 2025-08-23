@@ -4,7 +4,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAppContext } from "@/contexts/app-context";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { CalendarIcon, TrendingUp, Users, Wallet, Target, Search } from "lucide-react";
@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
 
-function SuperAgentKPIs() {
+function SuperAgentKPIs({ dateRange }: { dateRange: DateRange | undefined }) {
     const { superAgentStats } = useAppContext();
 
     if (!superAgentStats) return null;
@@ -23,12 +23,15 @@ function SuperAgentKPIs() {
     const kpis = [
         { title: "Total Revenue", value: `£${superAgentStats.totalRevenue.toFixed(2)}`, icon: Wallet },
         { title: "Total Profit", value: `£${superAgentStats.totalProfit.toFixed(2)}`, icon: TrendingUp },
+        { title: "Platform Fees", value: `£${superAgentStats.totalPlatformFees.toFixed(2)}`, icon: Target, subtitle: dateRange ? 'Filtered period' : 'All time' },
         { title: "Total Students", value: superAgentStats.totalStudents, icon: Users },
         { title: "Avg. Profit/Homework", value: `£${superAgentStats.averageProfitPerHomework.toFixed(2)}`, icon: Target },
+        { title: "To be paid S.Worker", value: `£${superAgentStats.toBePaidSuperWorker.toFixed(2)}`, icon: Wallet, subtitle: 'Current month' },
+        { title: "To be paid Agents", value: `£${superAgentStats.toBePaidAgents.toFixed(2)}`, icon: Users, subtitle: 'Current month' },
     ]
 
     return (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7 mb-6">
             {kpis.map(kpi => (
                 <Card key={kpi.title}>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -37,6 +40,9 @@ function SuperAgentKPIs() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{kpi.value}</div>
+                        {kpi.subtitle && (
+                            <p className="text-xs text-muted-foreground mt-1">{kpi.subtitle}</p>
+                        )}
                     </CardContent>
                 </Card>
             ))}
@@ -62,7 +68,7 @@ function StudentsPerAgentTable() {
         <Card className="mt-6">
             <CardHeader>
                 <CardTitle>Students per Agent</CardTitle>
-                <CardDescription>Breakdown of students referred by each agent.</CardDescription>
+                <CardDescription>Agent performance with current month payments (minus refunded assignments).</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="relative mb-4">
@@ -79,6 +85,7 @@ function StudentsPerAgentTable() {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Agent Name</TableHead>
+                                <TableHead className="text-right">To be Paid</TableHead>
                                 <TableHead className="text-right">Student Count</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -86,12 +93,74 @@ function StudentsPerAgentTable() {
                             {filteredAgents.length > 0 ? filteredAgents.map(agent => (
                                 <TableRow key={agent.agentName}>
                                     <TableCell className="font-medium">{agent.agentName}</TableCell>
+                                    <TableCell className="text-right">£{agent.toBePaid.toFixed(2)}</TableCell>
                                     <TableCell className="text-right">{agent.studentCount}</TableCell>
                                 </TableRow>
                             )) : (
                                 <TableRow>
-                                    <TableCell colSpan={2} className="text-center text-muted-foreground">
+                                    <TableCell colSpan={3} className="text-center text-muted-foreground">
                                         No agents found.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </ScrollArea>
+            </CardContent>
+        </Card>
+    )
+}
+
+function SuperWorkersTable() {
+    const { superAgentStats } = useAppContext();
+    const [searchTerm, setSearchTerm] = useState("");
+
+    const filteredSuperWorkers = useMemo(() => {
+        if (!superAgentStats || !superAgentStats.superWorkersData) return [];
+        if (!searchTerm) return superAgentStats.superWorkersData;
+        return superAgentStats.superWorkersData.filter(superWorker =>
+            superWorker.superWorkerName.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [superAgentStats, searchTerm]);
+
+    if (!superAgentStats || !superAgentStats.superWorkersData) return null;
+    
+    return (
+        <Card className="mt-6">
+            <CardHeader>
+                <CardTitle>Super Workers</CardTitle>
+                <CardDescription>Super worker performance with current month payments and completed assignments.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="relative mb-4">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="Filter super workers..." 
+                        className="pl-8" 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+                <ScrollArea className="h-72">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Super Worker Name</TableHead>
+                                <TableHead className="text-right">To be Paid</TableHead>
+                                <TableHead className="text-right">Assignments Done</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {filteredSuperWorkers.length > 0 ? filteredSuperWorkers.map(superWorker => (
+                                <TableRow key={superWorker.superWorkerName}>
+                                    <TableCell className="font-medium">{superWorker.superWorkerName}</TableCell>
+                                    <TableCell className="text-right">£{superWorker.toBePaid.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">{superWorker.assignmentsDone}</TableCell>
+                                </TableRow>
+                            )) : (
+                                <TableRow>
+                                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                                        No super workers found.
                                     </TableCell>
                                 </TableRow>
                             )}
@@ -107,16 +176,24 @@ function StudentsPerAgentTable() {
 export default function AnalyticsView() {
     const { user, analyticsData, setAnalyticsDateRange, superAgentStats } = useAppContext();
     const [date, setDate] = useState<DateRange | undefined>({
-        from: addDays(new Date(), -30),
+        from: addDays(new Date(), -30), // Default to last 30 days
         to: new Date(),
     });
+
+    // Initialize analytics date range on mount
+    useEffect(() => {
+        if (date?.from && date?.to) {
+            setAnalyticsDateRange(date);
+        }
+    }, []); // Only run on mount
 
     const chartData = useMemo(() => {
         if (!analyticsData || (!analyticsData.metric1.length && !analyticsData.metric2.length)) {
             return [];
         }
 
-        const isDailyView = differenceInDays(date?.to || new Date(), date?.from || new Date()) < 31;
+        const daysDifference = differenceInDays(date?.to || new Date(), date?.from || new Date());
+        const isDailyView = daysDifference <= 31;
         
         const combinedDataMap = new Map<string, { metric1: number; metric2: number }>();
 
@@ -135,7 +212,7 @@ export default function AnalyticsView() {
         const sortedDates = Array.from(combinedDataMap.keys()).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
         return sortedDates.map(d => {
-            const name = isDailyView ? format(new Date(d), 'MMM d') : format(new Date(d), 'MMM');
+            const name = isDailyView ? format(new Date(d), 'd MMM') : format(new Date(d), 'MMM');
             const dataPoint = combinedDataMap.get(d)!;
             return {
                 name,
@@ -153,9 +230,9 @@ export default function AnalyticsView() {
         }
     }
     
-     const setPresetRange = (days: number) => {
-        const to = new Date();
-        const from = addDays(new Date(), -days);
+    const setPresetRange = (days: number) => {
+        const to = new Date(); // Today
+        const from = days === 0 ? new Date() : addDays(new Date(), -days); // Today or X days ago
         setDate({ from, to });
         setAnalyticsDateRange({ from, to });
     };
@@ -163,16 +240,63 @@ export default function AnalyticsView() {
 
     if (!user) return null;
 
-    const isStudent = user.role === 'student';
+    // Workers have NO analytics as per requirements
+    if (user.role === 'worker') {
+        return (
+            <div className="p-4 space-y-4">
+                <h2 className="text-2xl font-bold">Analytics</h2>
+                <Card>
+                    <CardContent className="pt-6">
+                        <p className="text-muted-foreground text-center">
+                            Analytics are not available for workers.
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    // Role-based titles and descriptions
+    const getRoleBasedLabels = () => {
+        switch (user.role) {
+            case 'student':
+                return {
+                    metric1: { title: 'Spending Overview', description: 'Total amount spent on homework assignments.' },
+                    metric2: { title: 'Submissions Overview', description: 'Number of homework assignments submitted.' }
+                };
+            case 'agent':
+                return {
+                    metric1: { title: 'Commission Earnings', description: 'Total commission earned from student referrals (minus refunded homeworks).' },
+                    metric2: { title: 'Student Assignments', description: 'Number of assignments from your students (excluding refunded).' }
+                };
+            case 'super_worker':
+                return {
+                    metric1: { title: 'Fee Earnings', description: 'Total fees earned from reviewing assignments (based on 500 words pricing).' },
+                    metric2: { title: 'Assignments Handled', description: 'Number of assignments managed and reviewed by you.' }
+                };
+            case 'super_agent':
+                return {
+                    metric1: { title: 'Total Revenue', description: 'Total revenue from all assignments (minus declined and refunded).' },
+                    metric2: { title: 'Total Assignments', description: 'Total number of assignments in the system (minus declined and refunded).' }
+                };
+            default:
+                return {
+                    metric1: { title: 'Overview', description: 'Data overview.' },
+                    metric2: { title: 'Activity', description: 'Activity overview.' }
+                };
+        }
+    };
+
+    const labels = getRoleBasedLabels();
     
     const titles = {
-        metric1: isStudent ? 'Spending Overview' : 'Earnings Overview',
-        metric2: isStudent ? 'Submissions Overview' : 'Assignments Overview'
+        metric1: labels.metric1.title,
+        metric2: labels.metric2.title
     };
     
     const descriptions = {
-        metric1: isStudent ? 'Amount spent on assignments.' : 'Earnings from assignments.',
-        metric2: isStudent ? 'Number of submitted assignments.' : 'Number of new assignments.'
+        metric1: labels.metric1.description,
+        metric2: labels.metric2.description
     };
     
     const dataKeys = {
@@ -213,7 +337,7 @@ export default function AnalyticsView() {
                                 )}
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="end">
+                        <PopoverContent className="w-auto p-1" align="end">
                             <Calendar
                                 initialFocus
                                 mode="range"
@@ -227,45 +351,56 @@ export default function AnalyticsView() {
                  </div>
             </div>
             
-            {user.role === 'super_agent' && <SuperAgentKPIs />}
+            {user.role === 'super_agent' && <SuperAgentKPIs dateRange={date} />}
 
             {noData ? (
                 <Card>
                     <CardContent className="pt-6">
-                        <p className="text-muted-foreground text-center">No analytics data available for the selected period.</p>
+                        <p className="text-muted-foreground text-center">
+                            No analytics data available for the selected period.
+                        </p>
                     </CardContent>
                 </Card>
             ) : (
                 <div className="grid gap-4 md:grid-cols-2">
+                    {/* First Chart - Earnings/Spending */}
                     <Card>
                         <CardHeader>
                             <CardTitle>{titles.metric1}</CardTitle>
                             <CardDescription>{descriptions.metric1}</CardDescription>
                         </CardHeader>
-                        <CardContent className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-                                    <defs>
-                                        <linearGradient id="colorMetric1" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
-                                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                                    <XAxis dataKey="name" stroke="hsl(var(--foreground))" />
-                                    <YAxis stroke="hsl(var(--foreground))" />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: 'hsl(var(--background))',
-                                            borderColor: 'hsl(var(--border))'
-                                        }}
-                                        formatter={(value) => `£${Number(value).toFixed(2)}`}
-                                    />
-                                    <Area type="monotone" dataKey={dataKeys.metric1} name={titles.metric1} stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorMetric1)" />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
+                            <CardContent className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                        <defs>
+                                            <linearGradient id="colorMetric1" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
+                                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                                        <XAxis dataKey="name" stroke="hsl(var(--foreground))" />
+                                        <YAxis stroke="hsl(var(--foreground))" />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: 'hsl(var(--background))',
+                                                borderColor: 'hsl(var(--border))'
+                                            }}
+                                            formatter={(value) => {
+                                                // Special formatting based on role
+                                                if (user.role === 'student' || user.role === 'super_agent' || user.role === 'agent' || user.role === 'super_worker') {
+                                                    return `£${Number(value).toFixed(2)}`;
+                                                }
+                                                return Number(value).toFixed(0);
+                                            }}
+                                        />
+                                        <Area type="monotone" dataKey={dataKeys.metric1} name={titles.metric1} stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorMetric1)" />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </CardContent>
+                        </Card>
+                    
+                    {/* Second Chart - Assignments/Activity */}
                     <Card>
                         <CardHeader>
                             <CardTitle>{titles.metric2}</CardTitle>
@@ -288,6 +423,7 @@ export default function AnalyticsView() {
                                             backgroundColor: 'hsl(var(--background))',
                                             borderColor: 'hsl(var(--border))'
                                         }}
+                                        formatter={(value) => Number(value).toFixed(0)}
                                     />
                                     <Area type="monotone" dataKey={dataKeys.metric2} name={titles.metric2} stroke="hsl(var(--accent))" fillOpacity={1} fill="url(#colorMetric2)" />
                                 </AreaChart>
@@ -297,6 +433,7 @@ export default function AnalyticsView() {
                 </div>
             )}
              {user.role === 'super_agent' && <StudentsPerAgentTable />}
+             {user.role === 'super_agent' && <SuperWorkersTable />}
         </div>
     )
 }

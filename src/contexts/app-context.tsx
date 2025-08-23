@@ -25,6 +25,10 @@ import {
   createReferenceCode,
   getSuperAgentDashboardStats,
   requestChangesOnHomework as requestChangesAction,
+  requestSuperWorkerChanges,
+  uploadHomeworkFiles,
+  updateUserProfile,
+  initializeNotificationsSchema,
 } from '@/lib/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DateRange } from 'react-day-picker';
@@ -33,9 +37,11 @@ import { addDays } from 'date-fns';
 interface AppContextType {
   user: User | null;
   allUsers: User[];
+  toast: ReturnType<typeof useToast>['toast'];
   login: (email: string, pass: string) => Promise<boolean>;
   logout: () => void;
   register: (name: string, email: string, pass: string, refCode: string) => Promise<boolean>;
+  updateProfile: (updates: { name?: string; email?: string; password?: string }) => Promise<void>;
   
   authModalOpen: boolean;
   setAuthModalOpen: (open: boolean) => void;
@@ -43,7 +49,7 @@ interface AppContextType {
   setProfileModalOpen: (open: boolean) => void;
   
   homeworks: Homework[];
-  getHomeworksForUser: () => void;
+  getHomeworksForUser: () => Promise<void>;
   updateHomework: (id: string, updates: Partial<Homework>) => Promise<void>;
   submitHomework: (data: {
         moduleName: string;
@@ -54,6 +60,8 @@ interface AppContextType {
         files: { name: string; url: string }[];
     }) => Promise<void>;
   requestChangesOnHomework: (homeworkId: string, data: HomeworkChangeRequestData) => Promise<void>;
+  requestSuperWorkerChanges: (homeworkId: string, data: { newWordCount: number; newDeadline: Date; notes: string; }) => Promise<void>;
+  uploadHomeworkFiles: (homeworkId: string, files: { name: string; url: string }[], fileType: 'worker_draft' | 'super_worker_review' | 'final_approved') => Promise<void>;
 
   selectedHomework: Homework | null;
   setSelectedHomework: (homework: Homework | null) => void;
@@ -63,7 +71,10 @@ interface AppContextType {
   setIsNewHomeworkModalOpen: (open: boolean) => void;
   isRequestChangesModalOpen: boolean;
   setIsRequestChangesModalOpen: (open: boolean) => void;
-
+  isSuperWorkerChangeModalOpen: boolean;
+  setIsSuperWorkerChangeModalOpen: (open: boolean) => void;
+  isFileUploadModalOpen: boolean;
+  setIsFileUploadModalOpen: (open: boolean) => void;
 
   workers: User[];
   referenceCodes: ReferenceCode[];
@@ -104,6 +115,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isHomeworkModalOpen, setIsHomeworkModalOpen] = useState(false);
   const [isNewHomeworkModalOpen, setIsNewHomeworkModalOpen] = useState(false);
   const [isRequestChangesModalOpen, setIsRequestChangesModalOpen] = useState(false);
+  const [isSuperWorkerChangeModalOpen, setIsSuperWorkerChangeModalOpen] = useState(false);
+  const [isFileUploadModalOpen, setIsFileUploadModalOpen] = useState(false);
   const [selectedHomework, setSelectedHomework] = useState<Homework | null>(null);
   const [workers, setWorkers] = useState<User[]>([]);
   const [referenceCodes, setReferenceCodes] = useState<ReferenceCode[]>([]);
@@ -120,10 +133,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const userHomeworks = await fetchHomeworksForUser(user);
         setHomeworks(userHomeworks);
     } catch (error) {
-        console.error(error);
-        toast({ variant: 'destructive', title: "Error", description: "Could not fetch homeworks." });
+        console.error('Error fetching homeworks:', error);
+        // Don't include toast here to avoid dependency loops
     }
-  }, [user, toast]);
+  }, [user]);
 
   const fetchAllCodes = useCallback(async () => {
     if (!user || user.role !== 'super_agent') return;
@@ -159,19 +172,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const fetchAnalytics = useCallback(async () => {
     if (!user) return;
     try {
+      console.log('Fetching analytics with date range:', analyticsDateRange);
       const data = await getAnalyticsForUser(user, analyticsDateRange.from, analyticsDateRange.to);
+      console.log('Analytics data received:', data);
       setAnalyticsData(data);
 
       if(user.role === 'super_agent') {
-        const stats = await getSuperAgentDashboardStats();
+        const stats = await getSuperAgentDashboardStats(analyticsDateRange.from, analyticsDateRange.to);
         setSuperAgentStats(stats);
       }
 
     } catch (error) {
-      console.error(error);
-      toast({ variant: 'destructive', title: "Error", description: "Could not fetch analytics data." });
+      console.error('Error fetching analytics:', error);
+      toast({ variant: 'destructive', title: "Analytics Error", description: "Could not fetch analytics data." });
     }
-  }, [user, toast, analyticsDateRange]);
+  }, [user, analyticsDateRange, toast]);
   
   const fetchUserNotifications = useCallback(async () => {
     if (!user) return;
@@ -180,10 +195,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setNotifications(data);
       setUnreadNotificationCount(data.filter(n => !n.is_read).length);
     } catch (error) {
-      console.error(error);
-      toast({ variant: 'destructive', title: "Error", description: "Could not fetch notifications." });
+      console.error('Error fetching notifications:', error);
+      // Don't include toast here to avoid dependency loops
     }
-  }, [user, toast]);
+  }, [user]);
   
   const handleMarkNotificationsAsRead = useCallback(async () => {
     if (!user) return;
@@ -242,6 +257,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  useEffect(() => {
+    if (user && analyticsDateRange.from && analyticsDateRange.to) {
+      console.log('Date range changed, fetching analytics...');
+      fetchAnalytics();
+    }
+  }, [analyticsDateRange, fetchAnalytics, user]);
+
   const fetchAllData = useCallback(() => {
       getHomeworksForUser();
       fetchAnalytics();
@@ -261,9 +283,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fetchUsers().then(setAllUsers);
       }
       
-      const intervalId = setInterval(fetchAllData, 30000); 
+      // NO AUTOMATIC POLLING - only manual refresh on user actions
       
-      return () => clearInterval(intervalId); 
     } else {
       setHomeworks([]);
       setWorkers([]);
@@ -275,7 +296,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setUnreadNotificationCount(0);
       setSuperAgentStats(null);
     }
-  }, [user, fetchAllData, fetchAllCodes, fetchPricingConfig]);
+  }, [user, fetchAllCodes, fetchPricingConfig]); // Removed all the polling-related dependencies
+
+  // Check localStorage for persistent login on app startup
+  useEffect(() => {
+    const savedUser = localStorage.getItem('prohappy_user');
+    if (savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+      } catch (error) {
+        console.error('Error parsing saved user data:', error);
+        localStorage.removeItem('prohappy_user');
+      }
+    }
+    
+    // Initialize notifications schema on app startup
+    initializeNotificationsSchema().catch(error => {
+      console.error('Error initializing notifications schema:', error);
+    });
+  }, []);
 
 
   const login = async (email: string, pass: string): Promise<boolean> => {
@@ -283,6 +323,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const foundUser = await authenticateUser(email, pass);
       if (foundUser) {
         setUser(foundUser);
+        localStorage.setItem('prohappy_user', JSON.stringify(foundUser));
         setAuthModalOpen(false);
         toast({ title: "Login Successful", description: `Welcome back, ${foundUser.name}!` });
         return true;
@@ -299,6 +340,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('prohappy_user');
     setProfileModalOpen(false);
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
@@ -308,6 +350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const newUser = await createUser(name, email, pass, refCode);
         if (newUser) {
             setUser(newUser);
+            localStorage.setItem('prohappy_user', JSON.stringify(newUser));
             setAuthModalOpen(false);
             toast({ title: "Registration Successful", description: `Welcome, ${name}!` });
             return true;
@@ -320,10 +363,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateProfile = async (updates: { name?: string; email?: string; password?: string }) => {
+    if (!user) return;
+    try {
+      const updatedUser = await updateUserProfile(user.id, updates);
+      setUser(updatedUser);
+      localStorage.setItem('prohappy_user', JSON.stringify(updatedUser));
+      setProfileModalOpen(false);
+      toast({ title: "Profile Updated", description: "Your profile has been updated successfully." });
+    } catch (error: any) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Update Failed", description: error.message || "Could not update profile." });
+    }
+  };
+
   const updateHomework = async (id: string, updates: Partial<Homework>) => {
     try {
         await modifyHomework(id, updates);
-        await getHomeworksForUser(); 
+        
+        // Immediate refresh for real-time feeling
+        await Promise.all([
+          getHomeworksForUser(),
+          fetchUserNotifications(),
+          fetchAnalytics()
+        ]);
         
         if (selectedHomework && selectedHomework.id === id) {
             setSelectedHomework({ ...selectedHomework, ...updates });
@@ -338,11 +401,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const requestChangesOnHomework = async (homeworkId: string, data: HomeworkChangeRequestData) => {
       try {
           await requestChangesAction(homeworkId, data);
-          await getHomeworksForUser();
+          
+          // Immediate refresh for real-time feeling
+          await Promise.all([
+            getHomeworksForUser(),
+            fetchUserNotifications()
+          ]);
+          
           toast({ title: "Changes Requested", description: "Your request has been submitted to the worker." });
       } catch (error) {
           console.error(error);
           toast({ variant: 'destructive', title: "Error", description: "Could not submit your request." });
+      }
+  };
+
+  const requestSuperWorkerChangesHandler = async (homeworkId: string, data: { newWordCount: number; newDeadline: Date; notes: string; }) => {
+      try {
+          await requestSuperWorkerChanges(homeworkId, data);
+          
+          // Immediate refresh for real-time feeling
+          await Promise.all([
+            getHomeworksForUser(),
+            fetchUserNotifications()
+          ]);
+          
+          toast({ title: "Change Request Submitted", description: "Your change request has been sent to the student for approval." });
+      } catch (error) {
+          console.error(error);
+          toast({ variant: 'destructive', title: "Error", description: "Could not submit change request." });
+      }
+  };
+
+  const uploadHomeworkFilesHandler = async (homeworkId: string, files: { name: string; url: string }[], fileType: 'worker_draft' | 'super_worker_review' | 'final_approved') => {
+      if (!user) return;
+      try {
+          await uploadHomeworkFiles(homeworkId, files, user.id, fileType);
+          
+          // Immediate refresh for real-time feeling
+          await Promise.all([
+            getHomeworksForUser(),
+            fetchUserNotifications()
+          ]);
+          
+          const fileTypeText = fileType === 'worker_draft' ? 'draft files' : 
+                             fileType === 'super_worker_review' ? 'reviewed files' : 'final files';
+          toast({ title: "Files Uploaded", description: `${fileTypeText} have been uploaded successfully.` });
+      } catch (error) {
+          console.error(error);
+          toast({ variant: 'destructive', title: "Error", description: "Could not upload files." });
       }
   };
 
@@ -357,7 +463,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if(!user) return;
       try {
         const result = await createHomework(user, data);
-        await getHomeworksForUser();
+        
+        // Immediate refresh for real-time feeling
+        await Promise.all([
+          getHomeworksForUser(),
+          fetchUserNotifications(),
+          fetchAnalytics()
+        ]);
+        
         setIsNewHomeworkModalOpen(false);
         setSubmissionAlert({ open: true, message: result.message });
       } catch (error) {
@@ -377,13 +490,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
+  const handleSetAnalyticsDateRange = useCallback((range: DateRange) => {
+    console.log('Setting analytics date range:', range);
+    setAnalyticsDateRange(range);
+  }, []);
+
 
   const value = {
     user,
     allUsers,
+    toast,
     login,
     logout,
     register,
+    updateProfile,
     authModalOpen,
     setAuthModalOpen,
     profileModalOpen,
@@ -393,6 +513,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateHomework,
     submitHomework,
     requestChangesOnHomework,
+    requestSuperWorkerChanges: requestSuperWorkerChangesHandler,
+    uploadHomeworkFiles: uploadHomeworkFilesHandler,
     selectedHomework,
     setSelectedHomework,
     isHomeworkModalOpen,
@@ -401,13 +523,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsNewHomeworkModalOpen,
     isRequestChangesModalOpen,
     setIsRequestChangesModalOpen,
+    isSuperWorkerChangeModalOpen,
+    setIsSuperWorkerChangeModalOpen,
+    isFileUploadModalOpen,
+    setIsFileUploadModalOpen,
     workers,
     referenceCodes,
     fetchAllCodes,
     handleUpdateReferenceCode,
     handleCreateReferenceCode,
     analyticsData,
-    setAnalyticsDateRange,
+    setAnalyticsDateRange: handleSetAnalyticsDateRange,
     superAgentStats,
     pricingConfig,
     fetchPricingConfig,

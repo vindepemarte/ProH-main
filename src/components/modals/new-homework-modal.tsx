@@ -105,7 +105,12 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
 
   async function onSubmit(data: HomeworkFormValues) {
     const uploadedFiles = data.files && data.files.length > 0 ? Array.from(data.files as FileList).map(file => ({ name: file.name, url: "" })) : [];
-    await submitHomework({ ...data, notes: data.notes || '', files: uploadedFiles });
+    await submitHomework({ 
+      ...data, 
+      projectNumber: data.projectNumber as ProjectNumber[], 
+      notes: data.notes || '', 
+      files: uploadedFiles 
+    });
     form.reset();
     setCalculatedPrice(null);
     onOpenChange(false);
@@ -121,7 +126,7 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 flex-grow overflow-auto pr-6 -mr-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 flex-grow overflow-auto pr-6 -mr-6 pb-4">
             <FormField
               control={form.control}
               name="moduleName"
@@ -214,6 +219,7 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
                             "w-full pl-3 text-left font-normal",
                             !field.value && "text-muted-foreground"
                           )}
+                          type="button"
                         >
                           {field.value ? (
                             format(field.value, "PPP")
@@ -224,18 +230,26 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
+                    <PopoverContent className="w-auto p-1" align="start">
                       <Calendar
                         mode="single"
                         selected={field.value}
-                        onSelect={field.onChange}
-                        disabled={(date) =>
-                          date < new Date() || date < new Date("1900-01-01")
-                        }
+                        onSelect={(date) => {
+                          field.onChange(date);
+                        }}
+                        disabled={(date) => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0); // Reset time to start of day
+                          return date < today;
+                        }}
                         initialFocus
+                        fromDate={new Date()}
                       />
                     </PopoverContent>
                   </Popover>
+                  <FormDescription>
+                    Select a deadline date (must be today or later)
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -292,7 +306,7 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
               )}
             />
 
-          <DialogFooter className="pt-4 sticky bottom-0 bg-background/95 pb-4">
+          <DialogFooter className="pt-4 border-t mt-4">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={isCalculating || calculatedPrice === null}>Submit Homework</Button>
           </DialogFooter>
