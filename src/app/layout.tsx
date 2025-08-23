@@ -34,6 +34,9 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Generate cache busting timestamp
+  const cacheVersion = process.env.NODE_ENV === 'production' ? Date.now() : 'dev';
+  
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -48,6 +51,11 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap" rel="stylesheet" />
+        {/* Cache busting meta tags */}
+        <meta name="cache-version" content={`v${cacheVersion}`} />
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
       </head>
       <body className="font-body antialiased">
         <AppProvider>

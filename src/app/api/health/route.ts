@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
+// Mark this route as dynamic to prevent build-time execution
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET() {
   try {
     // Test database connection

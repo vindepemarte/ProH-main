@@ -1,15 +1,30 @@
 import { Pool } from 'pg';
 import 'dotenv/config'
 
-const connectionString = process.env.POSTGRES_URL || 'postgres://postgres_happystats_user:vw80A4T6VI7kr6W46U8Vg721WYlH7pHCMbChChWp4RkrJcE2hbiYTI2Y6JRB3pud@38.242.151.194:5828/postgres';
+let pool: Pool | null = null;
 
-if (!connectionString) {
-  throw new Error('POSTGRES_URL environment variable is not set.');
+export function getPool(): Pool {
+  if (!pool) {
+    const connectionString = process.env.POSTGRES_URL;
+    
+    if (!connectionString) {
+      throw new Error('POSTGRES_URL environment variable is not set.');
+    }
+    
+    pool = new Pool({
+      connectionString,
+    });
+  }
+  
+  return pool;
 }
 
-export const pool = new Pool({
-  connectionString,
-});
+// Export pool as a getter function to maintain compatibility
+export const pool = {
+  connect: () => getPool().connect(),
+  query: (text: string, params?: any[]) => getPool().query(text, params),
+  end: () => getPool().end(),
+};
 
 // The setup script is now a separate concern handled by `npm run db:setup`
 // and does not need to be part of the main application db connection logic.

@@ -1,8 +1,13 @@
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+require('dotenv/config');
 
-const connectionString = 'postgres://postgres_happystats_user:vw80A4T6VI7kr6W46U8Vg721WYlH7pHCMbChChWp4RkrJcE2hbiYTI2Y6JRB3pud@38.242.151.194:5828/postgres';
+const connectionString = process.env.POSTGRES_URL;
+
+if (!connectionString) {
+  throw new Error('POSTGRES_URL environment variable is not set.');
+}
 
 const pool = new Pool({
   connectionString,
