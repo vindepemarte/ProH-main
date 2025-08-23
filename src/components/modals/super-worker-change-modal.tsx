@@ -21,7 +21,7 @@ interface SuperWorkerChangeModalProps {
 }
 
 export default function SuperWorkerChangeModal({ open, onOpenChange }: SuperWorkerChangeModalProps) {
-    const { user, selectedHomework: hw, calculatePrice, requestSuperWorkerChanges } = useAppContext();
+    const { user, selectedHomework: hw, calculatePrice, requestSuperWorkerChanges, pricingConfig } = useAppContext();
     const [newWordCount, setNewWordCount] = useState<number>(0);
     const [newDeadline, setNewDeadline] = useState<Date | undefined>(undefined);
     const [notes, setNotes] = useState('');
@@ -37,6 +37,13 @@ export default function SuperWorkerChangeModal({ open, onOpenChange }: SuperWork
             calculateNewPrice(hw.wordCount, new Date(hw.deadline));
         }
     }, [hw, open]);
+
+    // Recalculate price when pricing config changes
+    useEffect(() => {
+        if (pricingConfig && newWordCount && newDeadline) {
+            calculateNewPrice(newWordCount, newDeadline);
+        }
+    }, [pricingConfig]);
 
     const calculateNewPrice = async (wordCount: number, deadline: Date) => {
         if (!wordCount || !deadline) return;

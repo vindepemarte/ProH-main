@@ -23,51 +23,54 @@ export default function UsersView() {
   }
 
   return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-2xl font-bold">User Management</h2>
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold px-4 sm:px-0">User Management</h2>
       <Card>
         <CardHeader>
-          <CardTitle>All Users</CardTitle>
+          <CardTitle>All Users ({allUsers.length})</CardTitle>
         </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-[calc(100vh-300px)]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Referred By</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {allUsers.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-medium">{u.name}</TableCell>
-                    <TableCell>{u.email}</TableCell>
-                    <TableCell>
-                        <Select 
-                          value={u.role} 
-                          onValueChange={(newRole: UserRole) => handleUpdateUserRole(u.id, newRole)}
-                          disabled={u.id === user.id} // Super agent can't change their own role
-                        >
-                            <SelectTrigger className="w-40 capitalize">
-                                <SelectValue placeholder="Select role" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="student">Student</SelectItem>
-                                <SelectItem value="agent">Agent</SelectItem>
-                                <SelectItem value="worker">Worker</SelectItem>
-                                <SelectItem value="super_worker">Super Worker</SelectItem>
-                                <SelectItem value="super_agent">Super Agent</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </TableCell>
-                    <TableCell>{u.referredBy}</TableCell>
+        <CardContent className="p-0">
+          {/* Mobile-optimized scrollable container */}
+          <ScrollArea className="h-[calc(100vh-280px)] w-full">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="min-w-[120px]">Name</TableHead>
+                    <TableHead className="min-w-[180px]">Email</TableHead>
+                    <TableHead className="min-w-[140px]">Role</TableHead>
+                    <TableHead className="min-w-[120px]">Referred By</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {allUsers.map((u) => (
+                    <TableRow key={u.id} className="border-b">
+                      <TableCell className="font-medium py-4">{u.name}</TableCell>
+                      <TableCell className="py-4 text-sm">{u.email}</TableCell>
+                      <TableCell className="py-4">
+                          <Select 
+                            value={u.role} 
+                            onValueChange={(newRole: UserRole) => handleUpdateUserRole(u.id, newRole)}
+                            disabled={u.id === user.id} // Super agent can't change their own role
+                          >
+                              <SelectTrigger className="w-full max-w-[160px] capitalize text-xs">
+                                  <SelectValue placeholder="Select role" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                  <SelectItem value="student">Student</SelectItem>
+                                  <SelectItem value="agent">Agent</SelectItem>
+                                  <SelectItem value="worker">Worker</SelectItem>
+                                  <SelectItem value="super_worker">Super Worker</SelectItem>
+                                  <SelectItem value="super_agent">Super Agent</SelectItem>
+                              </SelectContent>
+                          </Select>
+                      </TableCell>
+                      <TableCell className="py-4 text-sm text-muted-foreground">{u.referredBy}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </ScrollArea>
         </CardContent>
       </Card>

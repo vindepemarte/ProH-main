@@ -9,8 +9,6 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Set temporary POSTGRES_URL for build stage
-ENV POSTGRES_URL="postgresql://temp:temp@localhost:5432/temp"
 RUN npm run build
 
 # 3. Run the app

@@ -25,9 +25,9 @@ function SuperAgentKPIs({ dateRange }: { dateRange: DateRange | undefined }) {
         { title: "Total Profit", value: `£${superAgentStats.totalProfit.toFixed(2)}`, icon: TrendingUp },
         { title: "Platform Fees", value: `£${superAgentStats.totalPlatformFees.toFixed(2)}`, icon: Target, subtitle: dateRange ? 'Filtered period' : 'All time' },
         { title: "Total Students", value: superAgentStats.totalStudents, icon: Users },
-        { title: "Avg. Profit/Homework", value: `£${superAgentStats.averageProfitPerHomework.toFixed(2)}`, icon: Target },
-        { title: "To be paid S.Worker", value: `£${superAgentStats.toBePaidSuperWorker.toFixed(2)}`, icon: Wallet, subtitle: 'Current month' },
-        { title: "To be paid Agents", value: `£${superAgentStats.toBePaidAgents.toFixed(2)}`, icon: Users, subtitle: 'Current month' },
+        { title: "Avg. Profit", value: `£${superAgentStats.averageProfitPerHomework.toFixed(2)}`, icon: Target },
+        { title: "TBP S.Worker", value: `£${superAgentStats.toBePaidSuperWorker.toFixed(2)}`, icon: Wallet, subtitle: 'Current month' },
+        { title: "TBP Agents", value: `£${superAgentStats.toBePaidAgents.toFixed(2)}`, icon: Users, subtitle: 'Current month' },
     ]
 
     return (

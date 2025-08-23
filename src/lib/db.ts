@@ -1,22 +1,22 @@
 import { Pool } from 'pg';
 import 'dotenv/config'
 
-let pool: Pool | null = null;
+let poolInstance: Pool | null = null;
 
 export function getPool(): Pool {
-  if (!pool) {
+  if (!poolInstance) {
     const connectionString = process.env.POSTGRES_URL;
     
     if (!connectionString) {
       throw new Error('POSTGRES_URL environment variable is not set.');
     }
     
-    pool = new Pool({
+    poolInstance = new Pool({
       connectionString,
     });
   }
   
-  return pool;
+  return poolInstance;
 }
 
 // Export pool as a getter function to maintain compatibility

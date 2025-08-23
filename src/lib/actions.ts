@@ -144,30 +144,31 @@ export async function createUser(name: string, email: string, pass: string, refC
     } finally {
         client.release();
         
+        // Send notification after the transaction is complete
         if (notificationOwnerId && newUserName && newUserRole) {
-             try {
+            try {
+                // Check if the notification owner is the super agent to avoid duplicate notifications
+                const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
+                const isSuperAgentOwner = superAgentRes.rows.length > 0 && superAgentRes.rows[0].id === notificationOwnerId;
+                
+                // Always notify the code owner (could be agent, super_worker, etc.)
                 await createNotificationFromTemplate(
                     'userRegistration',
                     { userName: newUserName, userRole: newUserRole },
                     notificationOwnerId
                 );
+                
+                // Only notify super agent separately if they're not already the code owner
+                if (!isSuperAgentOwner && superAgentRes.rows.length > 0) {
+                    await createNotificationFromTemplate(
+                        'userRegistration',
+                        { userName: newUserName, userRole: newUserRole },
+                        superAgentRes.rows[0].id
+                    );
+                }
             } catch (notificationError) {
                 console.error("Failed to create notification after user registration:", notificationError);
             }
-        }
-        
-        // Also notify super agent about new user registration
-        try {
-            const superAgentRes = await pool.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
-            if (superAgentRes.rows.length > 0) {
-                await createNotificationFromTemplate(
-                    'userRegistration',
-                    { userName: newUserName, userRole: newUserRole },
-                    superAgentRes.rows[0].id
-                );
-            }
-        } catch (notificationError) {
-            console.error("Failed to create super agent notification for user registration:", notificationError);
         }
     }
 }

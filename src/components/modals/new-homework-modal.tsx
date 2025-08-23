@@ -66,7 +66,7 @@ interface NewHomeworkModalProps {
 }
 
 export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModalProps) {
-  const { submitHomework, calculatePrice } = useAppContext();
+  const { submitHomework, calculatePrice, pricingConfig } = useAppContext();
   const [calculatedPrice, setCalculatedPrice] = useState<number | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   
@@ -101,6 +101,13 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
     }, 500); // Debounce calculation
     return () => clearTimeout(timer);
   }, [handlePriceCalculation]);
+
+  // Recalculate price when pricing config changes
+  useEffect(() => {
+    if (pricingConfig && watchedWordCount && watchedDeadline) {
+      handlePriceCalculation();
+    }
+  }, [pricingConfig, handlePriceCalculation, watchedWordCount, watchedDeadline]);
 
 
   async function onSubmit(data: HomeworkFormValues) {
