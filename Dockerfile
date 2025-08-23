@@ -14,6 +14,10 @@ RUN npm run build
 # 3. Run the app
 FROM node:20-alpine AS runner
 WORKDIR /app
+
+# Install curl for health check
+RUN apk add --no-cache curl
+
 ENV NODE_ENV=production
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
@@ -21,5 +25,9 @@ COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 3000
 ENV PORT=3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || exit 1
 
 CMD ["node", "server.js"]
