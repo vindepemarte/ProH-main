@@ -253,7 +253,7 @@ export default function SuperWorkerChangeModal({ open, onOpenChange }: SuperWork
                     )}
                 </div>
 
-                <DialogFooter className="flex-shrink-0 pt-4 border-t bg-background">
+                <DialogFooter className="flex-shrink-0 pt-4 border-t bg-background gap-3 sm:gap-2">
                     <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
                         Cancel
                     </Button>

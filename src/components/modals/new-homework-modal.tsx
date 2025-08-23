@@ -313,7 +313,7 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
               )}
             />
 
-          <DialogFooter className="pt-4 border-t mt-4">
+          <DialogFooter className="pt-4 border-t mt-4 gap-3 sm:gap-2">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={isCalculating || calculatedPrice === null}>Submit Homework</Button>
           </DialogFooter>

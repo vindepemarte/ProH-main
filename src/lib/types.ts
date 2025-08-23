@@ -9,6 +9,8 @@ export interface User {
   role: UserRole;
   referenceCode: string | null; // This is for the user's *own* code, fetched separately
   referredBy: string | null; // User ID of referrer
+  termsAccepted?: boolean; // Terms and conditions acceptance
+  termsAcceptedAt?: Date; // When terms were accepted
 }
 
 export type ReferenceCodeType = 'STUDENT' | 'AGENT' | 'WORKER' | 'SUPER_WORKER';

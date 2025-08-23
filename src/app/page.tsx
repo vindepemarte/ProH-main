@@ -5,6 +5,7 @@ import Landing from '@/components/landing';
 import Dashboard from '@/components/dashboard';
 import AuthModal from '@/components/modals/auth-modal';
 import ProfileModal from '@/components/modals/profile-modal';
+import CookieConsent from '@/components/cookie-consent';
 
 export default function Home() {
   const { user } = useAppContext();
@@ -16,6 +17,7 @@ export default function Home() {
       </div>
       <AuthModal />
       <ProfileModal />
+      <CookieConsent />
     </>
   );
 }

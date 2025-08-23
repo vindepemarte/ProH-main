@@ -93,7 +93,7 @@ export async function authenticateUser(email: string, pass: string): Promise<Use
     }
 }
 
-export async function createUser(name: string, email: string, pass: string, refCode: string): Promise<User | null> {
+export async function createUser(name: string, email: string, pass: string, refCode: string, termsAccepted: boolean = false): Promise<User | null> {
     const client = await pool.connect();
     let notificationOwnerId: string | null = null;
     let newUserName: string | null = null;
@@ -123,8 +123,9 @@ export async function createUser(name: string, email: string, pass: string, refC
         };
         
         const insertRes = await client.query(
-            'INSERT INTO users (id, name, email, password_hash, role, referred_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [newUserId, newUser.name, newUser.email, newUser.password_hash, newUser.role, newUser.referredBy]
+            `INSERT INTO users (id, name, email, password_hash, role, referred_by, terms_accepted, terms_accepted_at) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, ${termsAccepted ? 'CURRENT_TIMESTAMP' : 'NULL'}) RETURNING *`,
+            [newUserId, newUser.name, newUser.email, newUser.password_hash, newUser.role, newUser.referredBy, termsAccepted]
         );
         
         await client.query('COMMIT');
@@ -890,21 +891,22 @@ export async function getSuperAgentDashboardStats(from?: Date, to?: Date): Promi
         
         const average_profit_per_homework = homeworkCount > 0 ? parseFloat(total_profit) / homeworkCount : 0;
         
-        // Calculate "To be paid" amounts for current month
+        // Calculate "To be paid" amounts for current month (ONLY from completed homeworks)
         const paymentStatsRes = await client.query(`
             SELECT 
-                (SELECT COALESCE(SUM((earnings->>'super_worker')::numeric), 0) FROM homeworks WHERE status != 'refund' AND earnings->>'super_worker' IS NOT NULL ${monthFilter}) as to_be_paid_super_worker,
-                (SELECT COALESCE(SUM((earnings->>'agent')::numeric), 0) FROM homeworks WHERE status != 'refund' AND earnings->>'agent' IS NOT NULL ${monthFilter}) as to_be_paid_agents
+                (SELECT COALESCE(SUM(CASE WHEN status = 'completed' THEN (earnings->>'super_worker')::numeric ELSE 0 END), 0) FROM homeworks WHERE status != 'refund' AND earnings->>'super_worker' IS NOT NULL ${monthFilter}) as to_be_paid_super_worker,
+                (SELECT COALESCE(SUM(CASE WHEN status = 'completed' THEN (earnings->>'agent')::numeric ELSE 0 END), 0) FROM homeworks WHERE status != 'refund' AND earnings->>'agent' IS NOT NULL ${monthFilter}) as to_be_paid_agents
         `, monthParams);
         
         const { to_be_paid_super_worker, to_be_paid_agents } = paymentStatsRes.rows[0];
         
-        // Students per Agent with current month payments
+        // Students per Agent with current month payments (ONLY from completed homeworks)
         const agentStudentsRes = await client.query(`
             SELECT 
                 u.name as "agentName", 
                 COUNT(DISTINCT s.id) as "studentCount",
-                COALESCE(SUM((h.earnings->>'agent')::numeric), 0) as "toBePaid"
+                COALESCE(SUM(CASE WHEN h.status = 'completed' THEN (h.earnings->>'agent')::numeric ELSE 0 END), 0) as "toBePaid",
+                COUNT(CASE WHEN h.status = 'completed' THEN 1 END) as "completedHomeworks"
             FROM users u
             LEFT JOIN users s ON s.referred_by = u.id
             LEFT JOIN homeworks h ON h.student_id = s.id AND h.status != 'refund' AND h.created_at::date BETWEEN $1 AND $2
@@ -913,11 +915,11 @@ export async function getSuperAgentDashboardStats(from?: Date, to?: Date): Promi
             ORDER BY "studentCount" DESC
         `, monthParams);
         
-        // Super Workers data with current month payments and completed assignments
+        // Super Workers data with current month payments (ONLY from completed homeworks)
         const superWorkersRes = await client.query(`
             SELECT 
                 u.name as "superWorkerName",
-                COALESCE(SUM((h.earnings->>'super_worker')::numeric), 0) as "toBePaid",
+                COALESCE(SUM(CASE WHEN h.status = 'completed' THEN (h.earnings->>'super_worker')::numeric ELSE 0 END), 0) as "toBePaid",
                 COUNT(CASE WHEN h.status = 'completed' THEN 1 END) as "assignmentsDone"
             FROM users u
             LEFT JOIN homeworks h ON h.status != 'refund' AND h.created_at::date BETWEEN $1 AND $2

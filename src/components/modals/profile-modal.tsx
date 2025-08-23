@@ -13,7 +13,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAppContext } from "@/contexts/app-context"
 import { useState, useEffect } from "react"
-import { User, Mail, Lock, Save, LogOut } from "lucide-react"
+import { User, Mail, Lock, Save, LogOut, FileText, Shield } from "lucide-react"
+import TermsConditionsModal from "./terms-conditions-modal"
+import PrivacyPolicyModal from "./privacy-policy-modal"
 
 export default function ProfileModal() {
   const { profileModalOpen, setProfileModalOpen, user, logout, updateProfile } = useAppContext();
@@ -21,6 +23,8 @@ export default function ProfileModal() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -56,6 +60,7 @@ export default function ProfileModal() {
   };
 
   return (
+    <>
     <Dialog open={profileModalOpen} onOpenChange={setProfileModalOpen}>
       <DialogContent className="sm:max-w-[425px] bg-background/95 backdrop-blur-sm">
         <DialogHeader>
@@ -109,9 +114,40 @@ export default function ProfileModal() {
               className="col-span-3" 
             />
           </div>
+          
+          {/* Legal Documents Section */}
+          <div className="border-t pt-4">
+            <Label className="text-base font-medium mb-3 block">Legal Documents</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setTermsModalOpen(true)}
+                className="flex items-center gap-2 h-auto py-3"
+              >
+                <FileText className="w-4 h-4" />
+                <div className="text-left">
+                  <div className="font-medium">Terms & Conditions</div>
+                  <div className="text-xs text-muted-foreground">View our terms</div>
+                </div>
+              </Button>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setPrivacyModalOpen(true)}
+                className="flex items-center gap-2 h-auto py-3"
+              >
+                <Shield className="w-4 h-4" />
+                <div className="text-left">
+                  <div className="font-medium">Privacy Policy</div>
+                  <div className="text-xs text-muted-foreground">Data protection</div>
+                </div>
+              </Button>
+            </div>
+          </div>
         </div>
-        <DialogFooter className="sm:justify-between">
-          <Button type="button" variant="destructive" onClick={logout} className="flex items-center gap-2">
+        <DialogFooter className="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:justify-between">
+          <Button type="button" variant="destructive" onClick={logout} className="flex items-center gap-2 order-2 sm:order-1">
             <LogOut className="w-4 h-4" />
             Logout
           </Button>
@@ -119,7 +155,7 @@ export default function ProfileModal() {
             type="submit" 
             onClick={handleSave} 
             disabled={isLoading}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 order-1 sm:order-2"
           >
             <Save className="w-4 h-4" />
             {isLoading ? "Saving..." : "Save changes"}
@@ -127,5 +163,17 @@ export default function ProfileModal() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    
+    <TermsConditionsModal 
+      open={termsModalOpen} 
+      onOpenChange={setTermsModalOpen}
+      showAcceptButton={false}
+    />
+    
+    <PrivacyPolicyModal 
+      open={privacyModalOpen} 
+      onOpenChange={setPrivacyModalOpen}
+    />
+  </>
   )
 }

@@ -5,7 +5,9 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL,
-    referred_by VARCHAR(255) REFERENCES users(id)
+    referred_by VARCHAR(255) REFERENCES users(id),
+    terms_accepted BOOLEAN DEFAULT FALSE,
+    terms_accepted_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS reference_codes (

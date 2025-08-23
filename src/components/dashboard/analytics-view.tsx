@@ -20,14 +20,27 @@ function SuperAgentKPIs({ dateRange }: { dateRange: DateRange | undefined }) {
 
     if (!superAgentStats) return null;
     
+    // Check if there are any completed homeworks for TBP calculations
+    const hasCompletedHomeworks = superAgentStats.toBePaidSuperWorker > 0 || superAgentStats.toBePaidAgents > 0;
+    
     const kpis = [
         { title: "Total Revenue", value: `£${superAgentStats.totalRevenue.toFixed(2)}`, icon: Wallet },
         { title: "Total Profit", value: `£${superAgentStats.totalProfit.toFixed(2)}`, icon: TrendingUp },
         { title: "Platform Fees", value: `£${superAgentStats.totalPlatformFees.toFixed(2)}`, icon: Target, subtitle: dateRange ? 'Filtered period' : 'All time' },
         { title: "Total Students", value: superAgentStats.totalStudents, icon: Users },
         { title: "Avg. Profit", value: `£${superAgentStats.averageProfitPerHomework.toFixed(2)}`, icon: Target },
-        { title: "TBP S.Worker", value: `£${superAgentStats.toBePaidSuperWorker.toFixed(2)}`, icon: Wallet, subtitle: 'Current month' },
-        { title: "TBP Agents", value: `£${superAgentStats.toBePaidAgents.toFixed(2)}`, icon: Users, subtitle: 'Current month' },
+        { 
+            title: "TBP S.Worker", 
+            value: hasCompletedHomeworks ? `£${superAgentStats.toBePaidSuperWorker.toFixed(2)}` : "No completed homeworks yet", 
+            icon: Wallet, 
+            subtitle: hasCompletedHomeworks ? 'Current month' : 'Complete homeworks to see payments'
+        },
+        { 
+            title: "TBP Agents", 
+            value: hasCompletedHomeworks ? `£${superAgentStats.toBePaidAgents.toFixed(2)}` : "No completed homeworks yet", 
+            icon: Users, 
+            subtitle: hasCompletedHomeworks ? 'Current month' : 'Complete homeworks to see payments'
+        },
     ]
 
     return (
@@ -90,13 +103,18 @@ function StudentsPerAgentTable() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredAgents.length > 0 ? filteredAgents.map(agent => (
-                                <TableRow key={agent.agentName}>
-                                    <TableCell className="font-medium">{agent.agentName}</TableCell>
-                                    <TableCell className="text-right">£{agent.toBePaid.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right">{agent.studentCount}</TableCell>
-                                </TableRow>
-                            )) : (
+                            {filteredAgents.length > 0 ? filteredAgents.map(agent => {
+                                const hasCompletedHomeworks = agent.toBePaid > 0;
+                                return (
+                                    <TableRow key={agent.agentName}>
+                                        <TableCell className="font-medium">{agent.agentName}</TableCell>
+                                        <TableCell className="text-right">
+                                            {hasCompletedHomeworks ? `£${agent.toBePaid.toFixed(2)}` : "No completed homeworks"}
+                                        </TableCell>
+                                        <TableCell className="text-right">{agent.studentCount}</TableCell>
+                                    </TableRow>
+                                );
+                            }) : (
                                 <TableRow>
                                     <TableCell colSpan={3} className="text-center text-muted-foreground">
                                         No agents found.
@@ -151,13 +169,18 @@ function SuperWorkersTable() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredSuperWorkers.length > 0 ? filteredSuperWorkers.map(superWorker => (
-                                <TableRow key={superWorker.superWorkerName}>
-                                    <TableCell className="font-medium">{superWorker.superWorkerName}</TableCell>
-                                    <TableCell className="text-right">£{superWorker.toBePaid.toFixed(2)}</TableCell>
-                                    <TableCell className="text-right">{superWorker.assignmentsDone}</TableCell>
-                                </TableRow>
-                            )) : (
+                            {filteredSuperWorkers.length > 0 ? filteredSuperWorkers.map(superWorker => {
+                                const hasCompletedHomeworks = superWorker.assignmentsDone > 0;
+                                return (
+                                    <TableRow key={superWorker.superWorkerName}>
+                                        <TableCell className="font-medium">{superWorker.superWorkerName}</TableCell>
+                                        <TableCell className="text-right">
+                                            {hasCompletedHomeworks ? `£${superWorker.toBePaid.toFixed(2)}` : "No completed homeworks"}
+                                        </TableCell>
+                                        <TableCell className="text-right">{superWorker.assignmentsDone}</TableCell>
+                                    </TableRow>
+                                );
+                            }) : (
                                 <TableRow>
                                     <TableCell colSpan={3} className="text-center text-muted-foreground">
                                         No super workers found.

@@ -40,7 +40,7 @@ interface AppContextType {
   toast: ReturnType<typeof useToast>['toast'];
   login: (email: string, pass: string) => Promise<boolean>;
   logout: () => void;
-  register: (name: string, email: string, pass: string, refCode: string) => Promise<boolean>;
+  register: (name: string, email: string, pass: string, refCode: string, termsAccepted: boolean) => Promise<boolean>;
   updateProfile: (updates: { name?: string; email?: string; password?: string }) => Promise<void>;
   
   authModalOpen: boolean;
@@ -345,9 +345,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
   
-  const register = async (name: string, email: string, pass: string, refCode: string): Promise<boolean> => {
+  const register = async (name: string, email: string, pass: string, refCode: string, termsAccepted: boolean): Promise<boolean> => {
      try {
-        const newUser = await createUser(name, email, pass, refCode);
+        const newUser = await createUser(name, email, pass, refCode, termsAccepted);
         if (newUser) {
             setUser(newUser);
             localStorage.setItem('prohappy_user', JSON.stringify(newUser));

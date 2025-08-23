@@ -395,7 +395,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         </div>
                     )}
                     {user.role === 'super_worker' && (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-3">
                              {hw.status === 'requested_changes' && (
                                 <Button className="w-full sm:w-auto" onClick={handleAcceptChanges}><Check className="mr-2"/> Accept Changes</Button>
                             )}
@@ -412,7 +412,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         </div>
                     )}
                     {user.role === 'student' && (
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-3">
                             {hw.status === 'completed' && hw.reviewedFiles && hw.reviewedFiles.length > 0 && (
                                 <div className="mb-2">
                                     <h4 className="text-sm font-medium mb-2">Download Final Work:</h4>
@@ -438,7 +438,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                     <p className="text-sm text-yellow-700 mb-3">
                                         The Super Worker has requested changes to this homework. Please review and approve or decline.
                                     </p>
-                                    <div className="flex flex-col sm:flex-row gap-2">
+                                    <div className="flex flex-col sm:flex-row gap-3">
                                         <Button className="w-full" variant="destructive" onClick={() => handleStatusChange('declined')}>Decline</Button>
                                         <Button className="w-full" onClick={() => handleStatusChange('in_progress')}>Approve</Button>
                                     </div>
@@ -455,7 +455,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         </div>
                     </div>
                 </ScrollArea>
-                <DialogFooter className="flex-shrink-0">
+                <DialogFooter className="flex-shrink-0 gap-3 sm:gap-2">
                     <Button variant="secondary" onClick={() => onOpenChange(false)}>Close</Button>
                 </DialogFooter>
             </DialogContent>

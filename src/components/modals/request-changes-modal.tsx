@@ -111,7 +111,7 @@ export default function RequestChangesModal({ open, onOpenChange }: RequestChang
               )}
             />
 
-          <DialogFooter className="pt-4 sticky bottom-0 bg-background/95 pb-4">
+          <DialogFooter className="pt-4 sticky bottom-0 bg-background/95 pb-4 gap-3 sm:gap-2">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
