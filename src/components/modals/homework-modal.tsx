@@ -177,7 +177,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
     const handleAssignSuperWorkerToHomework = (workerId: string) => {
         if (workerId === "none") {
             // Handle unassigning - you might want to implement this in actions.ts
-            updateHomework(hw.id, { superWorkerId: null });
+            updateHomework(hw.id, { superWorkerId: undefined });
         } else {
             handleAssignSuperWorker(hw.id, workerId);
         }

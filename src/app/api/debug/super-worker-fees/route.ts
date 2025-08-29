@@ -9,8 +9,8 @@ export async function GET(request: NextRequest) {
     const tableStatus = await checkSuperWorkerFeesTable();
     console.log('Table status:', tableStatus);
     
-    let fees = [];
-    let feesError = null;
+    let fees: any[] = [];
+    let feesError: string | null = null;
     
     try {
       fees = await fetchSuperWorkerFees();

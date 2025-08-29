@@ -346,8 +346,7 @@ function SuperWorkerFeesManager() {
                             );
                         })}
                     </div>
-                )}
-            </CardContent>
+                )}            
             </CardContent>
         </Card>
     );
