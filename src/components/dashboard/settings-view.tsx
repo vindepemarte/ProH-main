@@ -131,6 +131,116 @@ function CreateReferenceCode() {
     )
 }
 
+function SuperWorkerFeesManager() {
+    const { user, superWorkerFees, fetchSuperWorkerFees, handleUpdateSuperWorkerFee, toast } = useAppContext();
+    const [editingFees, setEditingFees] = useState<Record<string, string>>({});
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (user?.role === 'super_agent') {
+            fetchSuperWorkerFees();
+        }
+    }, [fetchSuperWorkerFees, user]);
+
+    const handleFeeChange = (workerId: string, fee: string) => {
+        setEditingFees(prev => ({ ...prev, [workerId]: fee }));
+    };
+
+    const handleSaveFee = async (workerId: string) => {
+        const newFee = editingFees[workerId];
+        if (newFee && !isNaN(parseFloat(newFee))) {
+            try {
+                setLoading(true);
+                await handleUpdateSuperWorkerFee(workerId, parseFloat(newFee));
+                setEditingFees(prev => ({ ...prev, [workerId]: '' }));
+            } catch (error) {
+                console.error('Error updating fee:', error);
+            } finally {
+                setLoading(false);
+            }
+        } else {
+            toast({ variant: 'destructive', title: 'Error', description: 'Please enter a valid fee amount.' });
+        }
+    };
+
+    if (user?.role !== 'super_agent') return null;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Super Worker Fees</CardTitle>
+                <CardDescription>
+                    Set individual fees for each Super Worker (per 500 words). These override the global Super Worker fee.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                {superWorkerFees.length === 0 ? (
+                    <p className="text-muted-foreground">No super workers found.</p>
+                ) : (
+                    <div className="space-y-3">
+                        {superWorkerFees.map((worker) => {
+                            const isEditing = editingFees[worker.id] !== undefined;
+                            const currentFee = isEditing ? editingFees[worker.id] : worker.fee_per_500.toString();
+                            
+                            return (
+                                <div key={worker.id} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-center p-3 border rounded-lg">
+                                    <div className="sm:col-span-2">
+                                        <div className="font-medium">{worker.name}</div>
+                                        <div className="text-sm text-muted-foreground">{worker.email}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium">£</span>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={currentFee}
+                                            onChange={(e) => handleFeeChange(worker.id, e.target.value)}
+                                            className="w-24"
+                                            disabled={loading}
+                                        />
+                                        <span className="text-sm text-muted-foreground">per 500 words</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {isEditing ? (
+                                            <>
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => handleSaveFee(worker.id)}
+                                                    disabled={loading || !editingFees[worker.id] || editingFees[worker.id] === worker.fee_per_500.toString()}
+                                                >
+                                                    {loading ? 'Saving...' : 'Save'}
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setEditingFees(prev => ({ ...prev, [worker.id]: '' }))}
+                                                    disabled={loading}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </>
+                                        ) : (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => handleFeeChange(worker.id, worker.fee_per_500.toString())}
+                                                disabled={loading}
+                                            >
+                                                Edit
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 function NotificationTemplateManager() {
     const { user, toast } = useAppContext();
     const [templates, setTemplates] = useState<NotificationTemplates | null>(null);
@@ -351,6 +461,7 @@ export default function SettingsView() {
                         <Button onClick={onSave}>Save Fees & Deadlines</Button>
                     </CardContent>
                 </Card>
+                <SuperWorkerFeesManager />
                  <Card>
                     <CardHeader>
                         <CardTitle>Reference Code Management</CardTitle>

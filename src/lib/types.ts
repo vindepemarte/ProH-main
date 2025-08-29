@@ -59,12 +59,24 @@ export interface HomeworkChangeRequestData {
     files: { name: string; url: string }[];
 }
 
+export interface SuperWorkerFee {
+  super_worker_id: string;
+  fee_per_500: number;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+export interface SuperWorkerWithFee extends User {
+  fee_per_500: number;
+}
+
 export interface Homework {
   id: string;
   studentId: string;
   agentId?: string;
   workerId?: string;
-  superWorkerId?: string;
+  superWorkerId?: string; // This is the assigned super worker ID
+  assignedSuperWorkerName?: string; // Name of the assigned super worker for display
   status: HomeworkStatus;
   moduleName: string;
   projectNumber: ProjectNumber[];
@@ -131,7 +143,7 @@ export interface WordTier {
 
 export interface FeeTier {
     agent: number;
-    super_worker: number;
+    super_worker: number; // Global fallback fee for super workers
 }
 
 export interface DeadlineTier {

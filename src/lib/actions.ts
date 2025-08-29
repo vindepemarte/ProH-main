@@ -2,7 +2,7 @@
 'use server';
 
 import { pool } from './db';
-import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, StudentsPerAgent, HomeworkChangeRequestData, HomeworkChangeRequest, NotificationTemplates } from './types';
+import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, StudentsPerAgent, HomeworkChangeRequestData, HomeworkChangeRequest, NotificationTemplates, SuperWorkerFee, SuperWorkerWithFee } from './types';
 import { differenceInDays, format, addDays } from 'date-fns';
 
 const hash = (pwd: string) => `hashed_${pwd}`;
@@ -177,7 +177,9 @@ export async function createUser(name: string, email: string, pass: string, refC
 
 export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
     const client = await pool.connect();
-    let query = 'SELECT h.* FROM homeworks h';
+    let query = `SELECT h.*, sw.name as assigned_super_worker_name 
+                 FROM homeworks h
+                 LEFT JOIN users sw ON h.super_worker_id = sw.id`;
     const params: (string | HomeworkStatus[])[] = [];
     
     switch(user.role) {
@@ -202,7 +204,7 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
             return [];
     }
     
-    query += ' ORDER BY deadline DESC';
+    query += ' ORDER BY h.deadline DESC';
 
     try {
         const res = await client.query(query, params);
@@ -229,6 +231,7 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
                 agentId: row.agent_id,
                 workerId: row.worker_id,
                 superWorkerId: row.super_worker_id,
+                assignedSuperWorkerName: row.assigned_super_worker_name,
                 moduleName: row.module_name,
                 projectNumber: row.project_number, 
                 wordCount: row.word_count,
@@ -666,6 +669,7 @@ export async function createHomework(
         deadline: Date;
         notes: string;
         files: { name: string; url: string }[];
+        assignedSuperWorkerId?: string; // Optional super worker assignment
     }
 ): Promise<{homework: Homework, message: string}> {
     const client = await pool.connect();
@@ -703,7 +707,11 @@ export async function createHomework(
         const finalPrice = await getCalculatedPrice(data.wordCount, data.deadline);
 
         const agentFeePer500 = pricingConfig.fees.agent;
-        const superWorkerFeePer500 = pricingConfig.fees.super_worker;
+        
+        // Get super worker fee (either from assigned worker or global config)
+        const superWorkerFeePer500 = data.assignedSuperWorkerId 
+            ? await getWorkerFee(data.assignedSuperWorkerId)
+            : pricingConfig.fees.super_worker;
         
         // Agent pay ONLY if student was referred by an actual agent
         const agentPay = agent ? (agentFeePer500 * (data.wordCount / 500)) : 0;
@@ -719,9 +727,9 @@ export async function createHomework(
         
         const res = await client.query(
             `INSERT INTO homeworks 
-            (id, student_id, agent_id, status, module_name, project_number, word_count, deadline, notes, price, earnings, created_at, updated_at) 
-            VALUES ($1, $2, $3, 'payment_approval', $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING *`,
-            [homeworkId, student.id, agent?.id, data.moduleName, data.projectNumber, data.wordCount, data.deadline, data.notes, finalPrice, JSON.stringify(earnings)]
+            (id, student_id, agent_id, super_worker_id, status, module_name, project_number, word_count, deadline, notes, price, earnings, created_at, updated_at) 
+            VALUES ($1, $2, $3, $4, 'payment_approval', $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING *`,
+            [homeworkId, student.id, agent?.id, data.assignedSuperWorkerId || null, data.moduleName, data.projectNumber, data.wordCount, data.deadline, data.notes, finalPrice, JSON.stringify(earnings)]
         );
 
         if (data.files && data.files.length > 0) {
@@ -771,7 +779,20 @@ export async function createHomework(
             console.error("Failed to create notification after homework creation:", notificationError);
         }
     }
-
+    
+    // If a super worker was assigned, notify them
+    if (data.assignedSuperWorkerId) {
+        try {
+            await createNotificationFromTemplate(
+                'workerAssignment',
+                { homeworkId },
+                data.assignedSuperWorkerId,
+                homeworkId
+            );
+        } catch (notificationError) {
+            console.error("Failed to create worker assignment notification:", notificationError);
+        }
+    }
 
     return { homework: createdHomework!, message: message! };
 }
@@ -1538,5 +1559,182 @@ export async function createNotificationFromTemplate(
         await createNotification({ userId, message, homeworkId, source: 'system' });
     } catch (error) {
         console.error('Error creating notification from template:', error);
+    }
+}
+
+// ========================
+// SUPER WORKER FEE MANAGEMENT
+// ========================
+
+/**
+ * Get the fee for a specific super worker
+ * Falls back to global fee if no custom fee is set
+ */
+export async function getWorkerFee(workerId: string): Promise<number> {
+    const client = await pool.connect();
+    try {
+        const res = await client.query(
+            'SELECT fee_per_500 FROM super_worker_fees WHERE super_worker_id = $1',
+            [workerId]
+        );
+        
+        if (res.rows.length > 0) {
+            return parseFloat(res.rows[0].fee_per_500);
+        }
+        
+        // Fallback to global pricing config
+        const pricingConfig = await getPricingConfig();
+        return pricingConfig.fees.super_worker;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Get all super workers with their fees
+ */
+export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
+    const client = await pool.connect();
+    try {
+        const res = await client.query(`
+            SELECT 
+                u.id, 
+                u.name, 
+                u.email, 
+                u.role,
+                COALESCE(f.fee_per_500, (SELECT (config->>'fees'->>'super_worker')::numeric FROM pricing_config WHERE id = 'main'), 10.00) as fee_per_500
+            FROM users u
+            LEFT JOIN super_worker_fees f ON u.id = f.super_worker_id
+            WHERE u.role = 'super_worker'
+            ORDER BY u.name
+        `);
+        
+        return res.rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            role: row.role,
+            referenceCode: null,
+            referredBy: null,
+            fee_per_500: parseFloat(row.fee_per_500)
+        }));
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Update a super worker's fee
+ */
+export async function updateSuperWorkerFee(workerId: string, fee: number): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query(
+            `INSERT INTO super_worker_fees (super_worker_id, fee_per_500) 
+             VALUES ($1, $2) 
+             ON CONFLICT (super_worker_id) 
+             DO UPDATE SET fee_per_500 = $2, updated_at = CURRENT_TIMESTAMP`,
+            [workerId, fee]
+        );
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Assign a super worker to a homework and recalculate earnings
+ */
+export async function assignSuperWorkerToHomework(
+    homeworkId: string,
+    workerId: string
+): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // Get the worker's fee
+        const workerFee = await getWorkerFee(workerId);
+        
+        // Get homework details
+        const hwRes = await client.query(
+            'SELECT word_count, price, agent_id FROM homeworks WHERE id = $1',
+            [homeworkId]
+        );
+        
+        if (hwRes.rows.length === 0) {
+            throw new Error('Homework not found');
+        }
+        
+        const hw = hwRes.rows[0];
+        
+        // Get agent fee if applicable
+        const pricingConfig = await getPricingConfig();
+        const agentFee = pricingConfig.fees.agent;
+        const agentPay = hw.agent_id ? (agentFee * (hw.word_count / 500)) : 0;
+        
+        // Calculate new earnings
+        const superWorkerPay = workerFee * (hw.word_count / 500);
+        const profit = hw.price - agentPay - superWorkerPay;
+        
+        const earnings = {
+            total: hw.price,
+            agent: agentPay > 0 ? agentPay : undefined,
+            super_worker: superWorkerPay,
+            profit: profit
+        };
+        
+        // Update homework with assigned worker and new earnings
+        await client.query(
+            `UPDATE homeworks 
+             SET super_worker_id = $1, earnings = $2, updated_at = CURRENT_TIMESTAMP 
+             WHERE id = $3`,
+            [workerId, JSON.stringify(earnings), homeworkId]
+        );
+        
+        await client.query('COMMIT');
+        
+        // Send notification to assigned worker
+        try {
+            await createNotificationFromTemplate(
+                'workerAssignment',
+                { homeworkId },
+                workerId,
+                homeworkId
+            );
+        } catch (notificationError) {
+            console.error('Failed to send worker assignment notification:', notificationError);
+        }
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Get all super workers for assignment dropdown
+ */
+export async function fetchSuperWorkersForAssignment(): Promise<User[]> {
+    const client = await pool.connect();
+    try {
+        const res = await client.query(`
+            SELECT id, name, email, role
+            FROM users 
+            WHERE role = 'super_worker'
+            ORDER BY name
+        `);
+        
+        return res.rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            role: row.role,
+            referenceCode: null,
+            referredBy: null
+        }));
+    } finally {
+        client.release();
     }
 }

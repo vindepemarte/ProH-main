@@ -1,6 +1,7 @@
 
 "use client"
 
+import { useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -96,10 +97,29 @@ function ChangeRequestHistory({ requests, user, handleFileDownload }: { requests
 }
 
 export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps) {
-    const { user, selectedHomework: hw, workers, updateHomework, setIsRequestChangesModalOpen, setIsSuperWorkerChangeModalOpen, setIsFileUploadModalOpen, pricingConfig } = useAppContext();
+    const { 
+        user, 
+        selectedHomework: hw, 
+        workers, 
+        updateHomework, 
+        setIsRequestChangesModalOpen, 
+        setIsSuperWorkerChangeModalOpen, 
+        setIsFileUploadModalOpen, 
+        pricingConfig,
+        superWorkersForAssignment,
+        handleAssignSuperWorker,
+        fetchSuperWorkersForAssignment
+    } = useAppContext();
 
 
     if (!hw || !user) return null;
+    
+    // Fetch super workers for assignment when modal opens for super agents
+    useEffect(() => {
+        if (open && user.role === 'super_agent') {
+            fetchSuperWorkersForAssignment();
+        }
+    }, [open, user.role, fetchSuperWorkersForAssignment]);
 
     // Debug logging to understand status dropdown visibility
     console.log('HomeworkModal Debug:', {
@@ -152,6 +172,12 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
 
     const handleAssignWorker = (workerId: string) => {
         updateHomework(hw.id, { workerId });
+    }
+    
+    const handleAssignSuperWorkerToHomework = (workerId: string) => {
+        if (workerId) {
+            handleAssignSuperWorker(hw.id, workerId);
+        }
     }
 
     const openRequestChangesModal = () => {
@@ -328,6 +354,11 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                             <p className={`font-semibold ${(hw.earnings.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                 Profit: £{Number(hw.earnings.profit || 0).toFixed(2)}
                             </p>
+                            {hw.assignedSuperWorkerName && (
+                                <p className="text-sm text-muted-foreground mt-2">
+                                    <strong>Assigned Super Worker:</strong> {hw.assignedSuperWorkerName}
+                                </p>
+                            )}
                         </div>
                     )}
 
@@ -375,6 +406,32 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                     <SelectItem value="completed">Completed</SelectItem>
                                 </SelectContent>
                             </Select>
+                            
+                            {/* Super Worker Assignment */}
+                            <div className="space-y-2">
+                                <Label>Assign Super Worker</Label>
+                                <Select
+                                    onValueChange={handleAssignSuperWorkerToHomework}
+                                    defaultValue={hw.superWorkerId || ""}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Super Worker..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="">None</SelectItem>
+                                        {superWorkersForAssignment.map((worker) => (
+                                            <SelectItem key={worker.id} value={worker.id}>
+                                                {worker.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {hw.superWorkerId && (
+                                    <p className="text-sm text-muted-foreground">
+                                        Currently assigned: {hw.assignedSuperWorkerName || 'Unknown'}
+                                    </p>
+                                )}
+                            </div>
                             
                             {/* Super Agent workflow helper */}
                             {hw.status === 'final_payment_approval' && hw.reviewedFiles && hw.reviewedFiles.length > 0 && (

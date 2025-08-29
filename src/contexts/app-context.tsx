@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, HomeworkChangeRequestData } from '@/lib/types';
+import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, HomeworkChangeRequestData, SuperWorkerWithFee } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import { 
   fetchUsers, 
@@ -29,6 +29,10 @@ import {
   uploadHomeworkFiles,
   updateUserProfile,
   initializeNotificationsSchema,
+  fetchSuperWorkerFees,
+  updateSuperWorkerFee,
+  assignSuperWorkerToHomework,
+  fetchSuperWorkersForAssignment,
 } from '@/lib/actions';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { DateRange } from 'react-day-picker';
@@ -58,6 +62,7 @@ interface AppContextType {
         deadline: Date;
         notes: string;
         files: { name: string; url: string }[];
+        assignedSuperWorkerId?: string;
     }) => Promise<void>;
   requestChangesOnHomework: (homeworkId: string, data: HomeworkChangeRequestData) => Promise<void>;
   requestSuperWorkerChanges: (homeworkId: string, data: { newWordCount: number; newDeadline: Date; notes: string; }) => Promise<void>;
@@ -98,6 +103,14 @@ interface AppContextType {
   unreadNotificationCount: number;
 
   handleUpdateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
+  
+  // Super Worker Assignment Functions
+  superWorkerFees: SuperWorkerWithFee[];
+  superWorkersForAssignment: User[];
+  fetchSuperWorkerFees: () => Promise<void>;
+  handleUpdateSuperWorkerFee: (workerId: string, fee: number) => Promise<void>;
+  handleAssignSuperWorker: (homeworkId: string, workerId: string) => Promise<void>;
+  fetchSuperWorkersForAssignment: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -125,6 +138,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pricingConfig, setPricingConfig] = useState<PricingConfig | null>(null);
   const [submissionAlert, setSubmissionAlert] = useState<{open: boolean, message: string}>({open: false, message: ''});
   const [analyticsDateRange, setAnalyticsDateRange] = useState<DateRange>({ from: addDays(new Date(), -30), to: new Date()});
+  
+  // Super Worker Management State
+  const [superWorkerFees, setSuperWorkerFees] = useState<SuperWorkerWithFee[]>([]);
+  const [superWorkersForAssignment, setSuperWorkersForAssignment] = useState<User[]>([]);
 
 
   const getHomeworksForUser = useCallback(async () => {
@@ -281,6 +298,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (user.role === 'super_agent') {
         fetchAllCodes();
         fetchUsers().then(setAllUsers);
+        fetchSuperWorkerFeesHandler();
+        fetchSuperWorkersForAssignmentHandler();
       }
       
       // NO AUTOMATIC POLLING - only manual refresh on user actions
@@ -295,6 +314,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setNotifications([]);
       setUnreadNotificationCount(0);
       setSuperAgentStats(null);
+      setSuperWorkerFees([]);
+      setSuperWorkersForAssignment([]);
     }
   }, [user, fetchAllCodes, fetchPricingConfig]); // Removed all the polling-related dependencies
 
@@ -431,6 +452,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
           toast({ variant: 'destructive', title: "Error", description: "Could not submit change request." });
       }
   };
+  
+  // =========================
+  // SUPER WORKER MANAGEMENT
+  // =========================
+  
+  const fetchSuperWorkerFeesHandler = useCallback(async () => {
+    if (!user || user.role !== 'super_agent') return;
+    try {
+      const fees = await fetchSuperWorkerFees();
+      setSuperWorkerFees(fees);
+    } catch (error) {
+      console.error('Error fetching super worker fees:', error);
+      toast({ variant: 'destructive', title: "Error", description: "Could not fetch super worker fees." });
+    }
+  }, [user, toast]);
+  
+  const fetchSuperWorkersForAssignmentHandler = useCallback(async () => {
+    if (!user || user.role !== 'super_agent') return;
+    try {
+      const workers = await fetchSuperWorkersForAssignment();
+      setSuperWorkersForAssignment(workers);
+    } catch (error) {
+      console.error('Error fetching super workers:', error);
+      toast({ variant: 'destructive', title: "Error", description: "Could not fetch super workers." });
+    }
+  }, [user, toast]);
+  
+  const handleUpdateSuperWorkerFee = async (workerId: string, fee: number) => {
+    try {
+      await updateSuperWorkerFee(workerId, fee);
+      await fetchSuperWorkerFeesHandler();
+      toast({ title: "Success", description: "Super worker fee updated successfully." });
+    } catch (error: any) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: error.message || "Could not update super worker fee." });
+    }
+  };
+  
+  const handleAssignSuperWorker = async (homeworkId: string, workerId: string) => {
+    try {
+      await assignSuperWorkerToHomework(homeworkId, workerId);
+      
+      // Refresh homework data to show updated assignment
+      await getHomeworksForUser();
+      
+      // Update selected homework if it's the one being modified
+      if (selectedHomework && selectedHomework.id === homeworkId) {
+        const worker = superWorkersForAssignment.find(w => w.id === workerId);
+        setSelectedHomework({
+          ...selectedHomework,
+          superWorkerId: workerId,
+          assignedSuperWorkerName: worker?.name
+        });
+      }
+      
+      toast({ title: "Success", description: "Super worker assigned successfully." });
+    } catch (error: any) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: error.message || "Could not assign super worker." });
+    }
+  };
 
   const uploadHomeworkFilesHandler = async (homeworkId: string, files: { name: string; url: string }[], fileType: 'worker_draft' | 'super_worker_review' | 'final_approved') => {
       if (!user) return;
@@ -459,6 +541,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         deadline: Date;
         notes: string;
         files: { name: string; url: string }[];
+        assignedSuperWorkerId?: string;
     }) => {
       if(!user) return;
       try {
@@ -544,6 +627,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     handleMarkNotificationsAsRead,
     unreadNotificationCount,
     handleUpdateUserRole,
+    // Super Worker Assignment Functions
+    superWorkerFees,
+    superWorkersForAssignment,
+    fetchSuperWorkerFees: fetchSuperWorkerFeesHandler,
+    handleUpdateSuperWorkerFee,
+    handleAssignSuperWorker,
+    fetchSuperWorkersForAssignment: fetchSuperWorkersForAssignmentHandler,
   };
 
   return (
