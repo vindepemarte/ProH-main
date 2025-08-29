@@ -210,12 +210,29 @@ function SuperWorkerFeesManager() {
     const { user, superWorkerFees, fetchSuperWorkerFees, handleUpdateSuperWorkerFee, toast } = useAppContext();
     const [editingFees, setEditingFees] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(false);
+    const [debugInfo, setDebugInfo] = useState<any>(null);
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        if (user?.role === 'super_agent') {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (user?.role === 'super_agent' && mounted) {
             fetchSuperWorkerFees();
         }
-    }, [fetchSuperWorkerFees, user]);
+    }, [fetchSuperWorkerFees, user, mounted]);
+    
+    const runDebugCheck = async () => {
+        try {
+            const response = await fetch('/api/debug/super-worker-fees');
+            const data = await response.json();
+            setDebugInfo(data);
+            console.log('Debug info:', data);
+        } catch (error) {
+            console.error('Debug check failed:', error);
+        }
+    };
 
     const handleFeeChange = (workerId: string, fee: string) => {
         setEditingFees(prev => ({ ...prev, [workerId]: fee }));
@@ -239,6 +256,7 @@ function SuperWorkerFeesManager() {
     };
 
     if (user?.role !== 'super_agent') return null;
+    if (!mounted) return <div>Loading...</div>;
 
     return (
         <Card>
@@ -249,8 +267,26 @@ function SuperWorkerFeesManager() {
                 </CardDescription>
             </CardHeader>
             <CardContent>
+                <div className="space-y-4">
+                    <div className="flex gap-2">
+                        <Button onClick={runDebugCheck} variant="outline" size="sm">
+                            Debug Check
+                        </Button>
+                        {debugInfo && (
+                            <div className="text-xs bg-muted p-2 rounded flex-1">
+                                <div>Table exists: {debugInfo.tableStatus?.exists ? '✅' : '❌'}</div>
+                                <div>Records: {debugInfo.tableStatus?.count || 0}</div>
+                                <div>Fees loaded: {debugInfo.fees?.length || 0}</div>
+                                {debugInfo.feesError && <div className="text-red-600">Error: {debugInfo.feesError}</div>}
+                            </div>
+                        )}
+                    </div>
+                </div>
                 {superWorkerFees.length === 0 ? (
-                    <p className="text-muted-foreground">No super workers found.</p>
+                    <div className="space-y-2">
+                        <p className="text-muted-foreground">No super workers found or error loading fees.</p>
+                        <p className="text-sm text-orange-600">Try running the migration again or check the debug info above.</p>
+                    </div>
                 ) : (
                     <div className="space-y-3">
                         {superWorkerFees.map((worker) => {
@@ -311,6 +347,7 @@ function SuperWorkerFeesManager() {
                         })}
                     </div>
                 )}
+            </CardContent>
             </CardContent>
         </Card>
     );

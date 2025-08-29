@@ -460,11 +460,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const fetchSuperWorkerFeesHandler = useCallback(async () => {
     if (!user || user.role !== 'super_agent') return;
     try {
+      console.log('Fetching super worker fees...');
       const fees = await fetchSuperWorkerFees();
+      console.log('Received fees:', fees);
       setSuperWorkerFees(fees);
     } catch (error) {
       console.error('Error fetching super worker fees:', error);
-      toast({ variant: 'destructive', title: "Error", description: "Could not fetch super worker fees." });
+      // Set empty array instead of keeping old state on error
+      setSuperWorkerFees([]);
+      toast({ variant: 'destructive', title: "Error", description: "Could not fetch super worker fees. Please try the migration again." });
     }
   }, [user, toast]);
   

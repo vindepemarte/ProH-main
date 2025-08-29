@@ -1700,12 +1700,12 @@ export async function getWorkerFee(workerId: string): Promise<number> {
 }
 
 /**
- * Get all super workers with their fees
+ * Check if super worker fees table exists and is functional
  */
-export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
+export async function checkSuperWorkerFeesTable(): Promise<{ exists: boolean; count: number; error?: string }> {
     const client = await pool.connect();
     try {
-        // First check if the super_worker_fees table exists
+        // Check if table exists
         const tableExists = await client.query(`
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
@@ -1715,8 +1715,49 @@ export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
         `);
         
         if (!tableExists.rows[0]?.exists) {
+            return { exists: false, count: 0 };
+        }
+        
+        // Count records
+        const countRes = await client.query('SELECT COUNT(*) as count FROM super_worker_fees');
+        const count = parseInt(countRes.rows[0].count);
+        
+        return { exists: true, count };
+        
+    } catch (error) {
+        return { 
+            exists: false, 
+            count: 0, 
+            error: error instanceof Error ? error.message : 'Unknown error' 
+        };
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Get all super workers with their fees
+ */
+export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
+    const client = await pool.connect();
+    try {
+        console.log('Starting fetchSuperWorkerFees...');
+        
+        // First check if the super_worker_fees table exists
+        const tableExists = await client.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'super_worker_fees'
+            );
+        `);
+        
+        console.log('Table exists check result:', tableExists.rows[0]);
+        
+        if (!tableExists.rows[0]?.exists) {
             // Table doesn't exist yet, return super workers with default fees
-            console.warn('super_worker_fees table does not exist yet. Run the migration script.');
+            console.warn('super_worker_fees table does not exist yet. Returning users with default fees.');
+            
             const usersRes = await client.query(`
                 SELECT id, name, email, role
                 FROM users 
@@ -1724,11 +1765,7 @@ export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
                 ORDER BY name
             `);
             
-            // Get default fee from pricing config
-            const pricingRes = await client.query(`
-                SELECT config FROM pricing_config WHERE id = 'main'
-            `);
-            const defaultFee = pricingRes.rows[0]?.config?.fees?.super_worker || 10.00;
+            console.log('Found super workers:', usersRes.rows.length);
             
             return usersRes.rows.map(row => ({
                 id: row.id,
@@ -1737,23 +1774,27 @@ export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
                 role: row.role,
                 referenceCode: null,
                 referredBy: null,
-                fee_per_500: parseFloat(defaultFee)
+                fee_per_500: 10.00
             }));
         }
         
-        // Table exists, proceed with normal query
+        console.log('Table exists, proceeding with fee query...');
+        
+        // Table exists, proceed with simple query
         const res = await client.query(`
             SELECT 
                 u.id, 
                 u.name, 
                 u.email, 
                 u.role,
-                COALESCE(f.fee_per_500, (SELECT (config->>'fees'->>'super_worker')::numeric FROM pricing_config WHERE id = 'main'), 10.00) as fee_per_500
+                COALESCE(f.fee_per_500, 10.00) as fee_per_500
             FROM users u
             LEFT JOIN super_worker_fees f ON u.id = f.super_worker_id
             WHERE u.role = 'super_worker'
             ORDER BY u.name
         `);
+        
+        console.log('Query result:', res.rows.length, 'rows');
         
         return res.rows.map(row => ({
             id: row.id,
@@ -1764,6 +1805,10 @@ export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
             referredBy: null,
             fee_per_500: parseFloat(row.fee_per_500)
         }));
+        
+    } catch (error) {
+        console.error('Error in fetchSuperWorkerFees:', error);
+        throw error;
     } finally {
         client.release();
     }
