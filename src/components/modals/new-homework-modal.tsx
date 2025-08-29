@@ -111,7 +111,25 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
 
 
   async function onSubmit(data: HomeworkFormValues) {
-    const uploadedFiles = data.files && data.files.length > 0 ? Array.from(data.files as FileList).map(file => ({ name: file.name, url: "" })) : [];
+    // Convert files to base64 data URLs if any files are selected
+    const uploadedFiles = data.files && data.files.length > 0 
+      ? await Promise.all(
+          Array.from(data.files as FileList).map(async (file) => {
+            // Convert file to base64 data URL for storage
+            const dataUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.readAsDataURL(file);
+            });
+            
+            return {
+              name: file.name,
+              url: dataUrl // Store as base64 data URL
+            };
+          })
+        )
+      : [];
+      
     await submitHomework({ 
       ...data, 
       projectNumber: data.projectNumber as ProjectNumber[], 

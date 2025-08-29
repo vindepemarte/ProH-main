@@ -68,11 +68,22 @@ export default function FileUploadModal({ open, onOpenChange }: FileUploadModalP
 
         setIsUploading(true);
         try {
-            // Convert FileList to array of file objects
-            const filesArray = Array.from(selectedFiles).map(file => ({
-                name: file.name,
-                url: '' // In a real implementation, you'd upload to cloud storage first
-            }));
+            // Convert FileList to array of file objects with base64 content
+            const filesArray = await Promise.all(
+                Array.from(selectedFiles).map(async (file) => {
+                    // Convert file to base64 data URL for storage
+                    const dataUrl = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.readAsDataURL(file);
+                    });
+                    
+                    return {
+                        name: file.name,
+                        url: dataUrl // Store as base64 data URL
+                    };
+                })
+            );
 
             await uploadHomeworkFiles(hw.id, filesArray, fileType);
             

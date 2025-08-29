@@ -140,16 +140,18 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
         if (user.role === 'student') return;
         
         try {
-            // Create download link - simulating file download
-            // In production, this would use the actual file URL from the server
             const link = document.createElement('a');
-            if (file.url) {
+            
+            if (file.url && file.url.trim() !== '') {
+                // If file has a data URL (base64) or actual URL, use it directly
                 link.href = file.url;
             } else {
-                // Simulate file download with blob if no URL available
-                const blob = new Blob(['File content'], { type: 'application/octet-stream' });
+                // Fallback: create a simple text file indicating the file is not available
+                const errorContent = `File "${file.name}" is not available for download.\n\nThis may be because:\n- The file was uploaded before the download system was implemented\n- There was an error during the original upload\n\nPlease contact support if you need access to this file.`;
+                const blob = new Blob([errorContent], { type: 'text/plain' });
                 link.href = URL.createObjectURL(blob);
             }
+            
             link.download = file.name;
             link.target = '_blank';
             document.body.appendChild(link);
@@ -157,7 +159,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
             document.body.removeChild(link);
             
             // Clean up object URL if created
-            if (!file.url) {
+            if (!file.url || file.url.trim() === '') {
                 URL.revokeObjectURL(link.href);
             }
         } catch (error) {
