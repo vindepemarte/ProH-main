@@ -498,7 +498,11 @@ export async function requestSuperWorkerChanges(homeworkId: string, data: {
         // Recalculate earnings with new word count
         const pricingConfig = await getPricingConfig();
         const agentFeePer500 = pricingConfig.fees.agent;
-        const superWorkerFeePer500 = pricingConfig.fees.super_worker;
+        
+        // Use assigned super worker's fee if available, otherwise fall back to global fee
+        const superWorkerFeePer500 = homework.super_worker_id 
+            ? await getWorkerFee(homework.super_worker_id)
+            : pricingConfig.fees.super_worker;
         
         // Get student to check if they have an agent referrer
         const studentRes = await client.query('SELECT * FROM users WHERE id = $1', [homework.student_id]);

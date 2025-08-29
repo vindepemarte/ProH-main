@@ -143,7 +143,7 @@ export interface WordTier {
 
 export interface FeeTier {
     agent: number;
-    super_worker: number; // Global fallback fee for super workers
+    super_worker: number; // Global fallback fee - individual super worker fees are managed in super_worker_fees table
 }
 
 export interface DeadlineTier {

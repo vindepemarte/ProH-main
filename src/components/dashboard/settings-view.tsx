@@ -558,8 +558,9 @@ export default function SettingsView() {
                         <div className="space-y-2">
                             <Label>Agent Fee (£ per 500 words)</Label>
                             <Input type="number" placeholder="e.g., 5.00" step="0.01" value={localConfig?.fees.agent || ''} onChange={(e) => handleFeeChange('agent', e.target.value)}/>
-                            <Label>Super Worker Fee (£ per 500 words)</Label>
-                            <Input type="number" step="0.01" value={localConfig?.fees.super_worker || ''} onChange={(e) => handleFeeChange('super_worker', e.target.value)}/>
+                            <p className="text-sm text-muted-foreground mt-2">
+                                <strong>Note:</strong> Super Worker fees are now managed individually in the "Super Worker Fees" section below.
+                            </p>
                         </div>
                         <div className="space-y-2 pt-4 border-t">
                             <Label>Within 1 Day Surcharge (£)</Label>

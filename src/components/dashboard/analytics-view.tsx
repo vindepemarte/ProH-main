@@ -31,13 +31,13 @@ function SuperAgentKPIs({ dateRange }: { dateRange: DateRange | undefined }) {
         { title: "Avg. Profit", value: `£${superAgentStats.averageProfitPerHomework.toFixed(2)}`, icon: Target },
         { 
             title: "TBP S.Worker", 
-            value: hasCompletedHomeworks ? `£${superAgentStats.toBePaidSuperWorker.toFixed(2)}` : "No completed homeworks yet", 
+            value: hasCompletedHomeworks ? `£${superAgentStats.toBePaidSuperWorker.toFixed(2)}` : "N/A", 
             icon: Wallet, 
             subtitle: hasCompletedHomeworks ? 'Current month' : 'Complete homeworks to see payments'
         },
         { 
             title: "TBP Agents", 
-            value: hasCompletedHomeworks ? `£${superAgentStats.toBePaidAgents.toFixed(2)}` : "No completed homeworks yet", 
+            value: hasCompletedHomeworks ? `£${superAgentStats.toBePaidAgents.toFixed(2)}` : "N/A", 
             icon: Users, 
             subtitle: hasCompletedHomeworks ? 'Current month' : 'Complete homeworks to see payments'
         },
@@ -109,7 +109,7 @@ function StudentsPerAgentTable() {
                                     <TableRow key={agent.agentName}>
                                         <TableCell className="font-medium">{agent.agentName}</TableCell>
                                         <TableCell className="text-right">
-                                            {hasCompletedHomeworks ? `£${agent.toBePaid.toFixed(2)}` : "No completed homeworks"}
+                                            {hasCompletedHomeworks ? `£${agent.toBePaid.toFixed(2)}` : "N/A"}
                                         </TableCell>
                                         <TableCell className="text-right">{agent.studentCount}</TableCell>
                                     </TableRow>
@@ -175,7 +175,7 @@ function SuperWorkersTable() {
                                     <TableRow key={superWorker.superWorkerName}>
                                         <TableCell className="font-medium">{superWorker.superWorkerName}</TableCell>
                                         <TableCell className="text-right">
-                                            {hasCompletedHomeworks ? `£${superWorker.toBePaid.toFixed(2)}` : "No completed homeworks"}
+                                            {hasCompletedHomeworks ? `£${superWorker.toBePaid.toFixed(2)}` : "N/A"}
                                         </TableCell>
                                         <TableCell className="text-right">{superWorker.assignmentsDone}</TableCell>
                                     </TableRow>
