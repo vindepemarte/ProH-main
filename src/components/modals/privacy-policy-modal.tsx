@@ -24,8 +24,8 @@ export default function PrivacyPolicyModal({ open, onOpenChange }: PrivacyPolicy
           </DialogDescription>
         </DialogHeader>
         
-        <ScrollArea className="flex-1 px-1">
-          <div className="space-y-6 text-sm">
+        <ScrollArea className="flex-1 px-1" style={{ maxHeight: 'calc(80vh - 140px)' }}>
+          <div className="space-y-6 text-sm pb-4">
             {/* Placeholder Privacy Policy Content */}
             <section>
               <h3 className="text-lg font-semibold mb-3">1. Information We Collect</h3>
