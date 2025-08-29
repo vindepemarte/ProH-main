@@ -194,7 +194,9 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
             params.push(user.id);
             break;
         case 'super_worker':
-             query += ` WHERE h.status IN ('in_progress', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed')`;
+            // Super worker only sees homeworks specifically assigned to them
+            query += ' WHERE h.super_worker_id = $1';
+            params.push(user.id);
             break;
         case 'worker':
             query += ' WHERE h.worker_id = $1';
@@ -845,10 +847,11 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
                 return { metric1: [], metric2: [] };
                 
             case 'super_worker':
-                // Super Worker: Fee earnings + ALL assignments handled (not filtered by super_worker_id)
-                // Super workers handle ALL assignments in the system
-                metric1Query = `SELECT TO_CHAR(created_at, '${dateFormat}') as date, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status != 'refund' AND earnings->>'super_worker' IS NOT NULL ${dateFilter} ${groupByClause}`;
-                metric2Query = `SELECT TO_CHAR(created_at, '${dateFormat}') as date, COUNT(*) as value FROM homeworks WHERE status != 'refund' ${dateFilter} ${groupByClause}`;
+                // Super Worker: Fee earnings + assignments specifically assigned to them
+                userFilter = ` AND super_worker_id = $3`;
+                params.push(user.id);
+                metric1Query = `SELECT TO_CHAR(created_at, '${dateFormat}') as date, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status != 'refund' AND earnings->>'super_worker' IS NOT NULL ${dateFilter} ${userFilter} ${groupByClause}`;
+                metric2Query = `SELECT TO_CHAR(created_at, '${dateFormat}') as date, COUNT(*) as value FROM homeworks WHERE status != 'refund' ${dateFilter} ${userFilter} ${groupByClause}`;
                 break;
                 
             case 'super_agent':
