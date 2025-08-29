@@ -175,7 +175,10 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
     }
     
     const handleAssignSuperWorkerToHomework = (workerId: string) => {
-        if (workerId) {
+        if (workerId === "none") {
+            // Handle unassigning - you might want to implement this in actions.ts
+            updateHomework(hw.id, { superWorkerId: null });
+        } else {
             handleAssignSuperWorker(hw.id, workerId);
         }
     }
@@ -412,13 +415,13 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                 <Label>Assign Super Worker</Label>
                                 <Select
                                     onValueChange={handleAssignSuperWorkerToHomework}
-                                    defaultValue={hw.superWorkerId || ""}
+                                    value={hw.superWorkerId || "none"}
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select Super Worker..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="">None</SelectItem>
+                                        <SelectItem value="none">None</SelectItem>
                                         {superWorkersForAssignment.map((worker) => (
                                             <SelectItem key={worker.id} value={worker.id}>
                                                 {worker.name}

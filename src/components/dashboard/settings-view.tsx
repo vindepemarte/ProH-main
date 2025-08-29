@@ -131,6 +131,81 @@ function CreateReferenceCode() {
     )
 }
 
+function DatabaseMigrationRunner() {
+    const { user, toast } = useAppContext();
+    const [isRunning, setIsRunning] = useState(false);
+    const [migrationStatus, setMigrationStatus] = useState<'pending' | 'success' | 'error'>('pending');
+
+    const runMigration = async () => {
+        setIsRunning(true);
+        try {
+            const response = await fetch('/api/migrate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                setMigrationStatus('success');
+                toast({ title: 'Success', description: result.message });
+            } else {
+                setMigrationStatus('error');
+                toast({ variant: 'destructive', title: 'Migration Failed', description: result.error });
+            }
+        } catch (error) {
+            setMigrationStatus('error');
+            console.error('Migration error:', error);
+            toast({ variant: 'destructive', title: 'Error', description: 'Failed to run migration' });
+        } finally {
+            setIsRunning(false);
+        }
+    };
+
+    if (user?.role !== 'super_agent') return null;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Database Migration</CardTitle>
+                <CardDescription>
+                    Run the Super Worker Fees migration to enable per-worker fee management.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                    <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                            Run this migration if you're getting errors with Super Worker fee management. 
+                            This will create the necessary database tables and triggers.
+                        </AlertDescription>
+                    </Alert>
+                    
+                    {migrationStatus === 'success' && (
+                        <Alert>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription className="text-green-700">
+                                Migration completed successfully! You can now manage individual Super Worker fees.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+                    
+                    <Button 
+                        onClick={runMigration} 
+                        disabled={isRunning || migrationStatus === 'success'}
+                        className="w-full"
+                    >
+                        {isRunning ? 'Running Migration...' : 'Run Super Worker Fees Migration'}
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 function SuperWorkerFeesManager() {
     const { user, superWorkerFees, fetchSuperWorkerFees, handleUpdateSuperWorkerFee, toast } = useAppContext();
     const [editingFees, setEditingFees] = useState<Record<string, string>>({});
@@ -462,6 +537,7 @@ export default function SettingsView() {
                     </CardContent>
                 </Card>
                 <SuperWorkerFeesManager />
+                <DatabaseMigrationRunner />
                  <Card>
                     <CardHeader>
                         <CardTitle>Reference Code Management</CardTitle>

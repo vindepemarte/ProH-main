@@ -1563,6 +1563,104 @@ export async function createNotificationFromTemplate(
 }
 
 // ========================
+// MIGRATION HELPERS
+// ========================
+
+/**
+ * Run the super worker fees migration
+ */
+export async function runSuperWorkerFeesMigration(): Promise<{ success: boolean; message: string }> {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // Create the super_worker_fees table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS super_worker_fees (
+                super_worker_id VARCHAR(255) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                fee_per_500 NUMERIC(10,2) NOT NULL DEFAULT 10.00,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        
+        // Populate with default fees for existing super workers
+        await client.query(`
+            INSERT INTO super_worker_fees (super_worker_id, fee_per_500)
+            SELECT id, 10.00 
+            FROM users 
+            WHERE role = 'super_worker' 
+            AND id NOT IN (SELECT super_worker_id FROM super_worker_fees)
+        `);
+        
+        // Add index for better performance
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_super_worker_fees_worker_id ON super_worker_fees(super_worker_id)
+        `);
+        
+        // Create trigger function
+        await client.query(`
+            CREATE OR REPLACE FUNCTION create_default_super_worker_fee()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF NEW.role = 'super_worker' THEN
+                    INSERT INTO super_worker_fees (super_worker_id, fee_per_500)
+                    VALUES (NEW.id, 10.00)
+                    ON CONFLICT (super_worker_id) DO NOTHING;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        // Create the trigger
+        await client.query(`
+            DROP TRIGGER IF EXISTS trigger_create_super_worker_fee ON users;
+            CREATE TRIGGER trigger_create_super_worker_fee
+                AFTER INSERT OR UPDATE ON users
+                FOR EACH ROW
+                EXECUTE FUNCTION create_default_super_worker_fee();
+        `);
+        
+        // Create update timestamp trigger
+        await client.query(`
+            CREATE OR REPLACE FUNCTION update_super_worker_fee_timestamp()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = CURRENT_TIMESTAMP;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        await client.query(`
+            DROP TRIGGER IF EXISTS trigger_update_super_worker_fee_timestamp ON super_worker_fees;
+            CREATE TRIGGER trigger_update_super_worker_fee_timestamp
+                BEFORE UPDATE ON super_worker_fees
+                FOR EACH ROW
+                EXECUTE FUNCTION update_super_worker_fee_timestamp();
+        `);
+        
+        await client.query('COMMIT');
+        
+        return {
+            success: true,
+            message: 'Super worker fees migration completed successfully'
+        };
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Migration failed:', error);
+        return {
+            success: false,
+            message: `Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        };
+    } finally {
+        client.release();
+    }
+}
+
+// ========================
 // SUPER WORKER FEE MANAGEMENT
 // ========================
 
@@ -1573,13 +1671,24 @@ export async function createNotificationFromTemplate(
 export async function getWorkerFee(workerId: string): Promise<number> {
     const client = await pool.connect();
     try {
-        const res = await client.query(
-            'SELECT fee_per_500 FROM super_worker_fees WHERE super_worker_id = $1',
-            [workerId]
-        );
+        // Check if the super_worker_fees table exists
+        const tableExists = await client.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'super_worker_fees'
+            );
+        `);
         
-        if (res.rows.length > 0) {
-            return parseFloat(res.rows[0].fee_per_500);
+        if (tableExists.rows[0]?.exists) {
+            const res = await client.query(
+                'SELECT fee_per_500 FROM super_worker_fees WHERE super_worker_id = $1',
+                [workerId]
+            );
+            
+            if (res.rows.length > 0) {
+                return parseFloat(res.rows[0].fee_per_500);
+            }
         }
         
         // Fallback to global pricing config
@@ -1596,6 +1705,43 @@ export async function getWorkerFee(workerId: string): Promise<number> {
 export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
     const client = await pool.connect();
     try {
+        // First check if the super_worker_fees table exists
+        const tableExists = await client.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'super_worker_fees'
+            );
+        `);
+        
+        if (!tableExists.rows[0]?.exists) {
+            // Table doesn't exist yet, return super workers with default fees
+            console.warn('super_worker_fees table does not exist yet. Run the migration script.');
+            const usersRes = await client.query(`
+                SELECT id, name, email, role
+                FROM users 
+                WHERE role = 'super_worker'
+                ORDER BY name
+            `);
+            
+            // Get default fee from pricing config
+            const pricingRes = await client.query(`
+                SELECT config FROM pricing_config WHERE id = 'main'
+            `);
+            const defaultFee = pricingRes.rows[0]?.config?.fees?.super_worker || 10.00;
+            
+            return usersRes.rows.map(row => ({
+                id: row.id,
+                name: row.name,
+                email: row.email,
+                role: row.role,
+                referenceCode: null,
+                referredBy: null,
+                fee_per_500: parseFloat(defaultFee)
+            }));
+        }
+        
+        // Table exists, proceed with normal query
         const res = await client.query(`
             SELECT 
                 u.id, 
@@ -1629,6 +1775,19 @@ export async function fetchSuperWorkerFees(): Promise<SuperWorkerWithFee[]> {
 export async function updateSuperWorkerFee(workerId: string, fee: number): Promise<void> {
     const client = await pool.connect();
     try {
+        // Check if the super_worker_fees table exists
+        const tableExists = await client.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'super_worker_fees'
+            );
+        `);
+        
+        if (!tableExists.rows[0]?.exists) {
+            throw new Error('Super worker fees table does not exist. Please run the database migration script first.');
+        }
+        
         await client.query(
             `INSERT INTO super_worker_fees (super_worker_id, fee_per_500) 
              VALUES ($1, $2) 
