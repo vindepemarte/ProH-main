@@ -197,6 +197,7 @@ export interface NotificationTemplates {
     
     // Legacy - keep for backward compatibility
     completed: NotificationTemplate;
+    homeworkSubmitted: NotificationTemplate;
 }
 
     

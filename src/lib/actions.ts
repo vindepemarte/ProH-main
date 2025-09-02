@@ -790,6 +790,22 @@ export async function createHomework(
         }
     }
     
+    // Send homework submitted notification to student with payment details
+    try {
+        await createNotificationFromTemplate(
+            'homeworkSubmitted',
+            { 
+                referenceCode: homeworkId, 
+                paymentAmount: createdHomework!.price!.toFixed(2),
+                bankDetails: 'Account: ProH Academic Services, Sort Code: 12-34-56, Account Number: 12345678'
+            },
+            student.id,
+            homeworkId
+        );
+    } catch (notificationError) {
+        console.error("Failed to create homework submitted notification:", notificationError);
+    }
+    
     // If a super worker was assigned, notify them
     if (data.assignedSuperWorkerId) {
         try {
@@ -1453,6 +1469,13 @@ const defaultTemplates: NotificationTemplates = {
         description: 'Sent when homework is completed',
         template: 'Your homework #{homeworkId} has been completed and final files are ready for download.',
         variables: ['homeworkId']
+    },
+    homeworkSubmitted: {
+        id: 'homework_submitted',
+        name: 'Homework Submitted',
+        description: 'Sent to student when homework is successfully submitted with payment details',
+        template: 'Your homework has been submitted successfully! Reference Code: {referenceCode}. Payment Amount: ${paymentAmount}. Please transfer the payment to: {bankDetails}. Your homework will begin processing once payment is confirmed.',
+        variables: ['referenceCode', 'paymentAmount', 'bankDetails']
     }
 };
 
