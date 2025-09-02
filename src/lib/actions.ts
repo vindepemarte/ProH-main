@@ -620,11 +620,10 @@ export async function fetchAllReferenceCodes(): Promise<ReferenceCode[]> {
     const client = await pool.connect();
     try {
         const res = await client.query(`
-            SELECT rc.code, rc.role, rc.owner_id as ownerId, u.name as ownerName, u.email as ownerEmail
+            SELECT rc.code, rc.role, rc.owner_id as "ownerId", u.name as "ownerName", u.email as "ownerEmail"
             FROM reference_codes rc
             LEFT JOIN users u ON rc.owner_id = u.id
         `);
-        console.log('Fetched reference codes:', res.rows);
         return res.rows;
     } finally {
         client.release();

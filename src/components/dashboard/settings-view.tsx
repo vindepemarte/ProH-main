@@ -125,7 +125,7 @@ function FeeAndDeadlineConfigView() {
 }
 
 function ReferenceCodeManagerView() {
-    const { referenceCodes, fetchAllCodes, handleUpdateReferenceCode, allUsers } = useAppContext();
+    const { referenceCodes, fetchAllCodes, handleUpdateReferenceCode } = useAppContext();
     const [editingCodes, setEditingCodes] = useState<Record<string, string>>({});
 
     useEffect(() => {
@@ -146,9 +146,6 @@ function ReferenceCodeManagerView() {
     if (!referenceCodes || referenceCodes.length === 0) {
         return <p className="text-muted-foreground">No reference codes found.</p>;
     }
-
-    console.log('referenceCodes in view:', referenceCodes);
-    console.log('allUsers in view:', allUsers);
     
     return (
         <Card>
@@ -159,7 +156,6 @@ function ReferenceCodeManagerView() {
             <CardContent className="space-y-2">
                 {referenceCodes.map(rc => {
                     if (!rc.role) return null;
-                    const owner = allUsers.find(u => u.id === rc.ownerId);
                     return (
                         <div key={rc.code} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                             <Label className="w-full sm:w-48">For <span className="capitalize">{rc.role.replace(/_/g, ' ')}s</span>:</Label>
@@ -169,7 +165,7 @@ function ReferenceCodeManagerView() {
                                 onChange={(e) => handleCodeChange(rc.code, e.target.value)}
                             />
                             <div className="w-full sm:w-48 text-sm text-muted-foreground">
-                                {owner ? `${owner.name} (${owner.email})` : 'Unassigned'}
+                                {rc.ownerName ? `${rc.ownerName} (${rc.ownerEmail})` : 'Unassigned'}
                             </div>
                             <Button onClick={() => handleSave(rc.code)} disabled={!editingCodes[rc.code] || editingCodes[rc.code] === rc.code}>Save</Button>
                         </div>
