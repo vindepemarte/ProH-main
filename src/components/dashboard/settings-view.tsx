@@ -549,7 +549,7 @@ function NotificationTemplateManagerView() {
                 
                 <ScrollArea className="h-96">
                     <div className="space-y-4">
-                        {Object.entries(templates).map(([key, template]) => (
+                        {Object.entries(templates).filter(([key, template]) => !template.variables.includes('homeworkId')).map(([key, template]) => (
                             <div key={key} className="border rounded-lg p-4 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <div>

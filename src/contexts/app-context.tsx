@@ -34,7 +34,7 @@ import {
   assignSuperWorkerToHomework,
   fetchSuperWorkersForAssignment,
 } from '@/lib/actions';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+
 import { DateRange } from 'react-day-picker';
 import { addDays } from 'date-fns';
 
@@ -139,7 +139,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [superAgentStats, setSuperAgentStats] = useState<SuperAgentDashboardStats | null>(null);
   const [pricingConfig, setPricingConfig] = useState<PricingConfig | null>(null);
-  const [submissionAlert, setSubmissionAlert] = useState<{open: boolean, message: string}>({open: false, message: ''});
+  
   const [analyticsDateRange, setAnalyticsDateRange] = useState<DateRange>({ from: addDays(new Date(), -30), to: new Date()});
   const [showConfetti, setShowConfetti] = useState(false);
   
@@ -563,7 +563,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ]);
         
         setIsNewHomeworkModalOpen(false);
-        setSubmissionAlert({ open: true, message: result.message });
         setShowConfetti(true);
       } catch (error) {
         console.error(error);
@@ -650,19 +649,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={value}>
         {children}
-        <AlertDialog open={submissionAlert.open} onOpenChange={(open) => setSubmissionAlert({...submissionAlert, open})}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Homework Submitted!</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        {submissionAlert.message}
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogAction onClick={() => setSubmissionAlert({open: false, message: ''})}>OK</AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
     </AppContext.Provider>
   );
 }
