@@ -147,8 +147,8 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
     setFormCompleted(true);
   }
 
-  const handleNextStep = async () => {
-    const isValid = await form.trigger();
+  const handleNextStep = async (field: any) => {
+    const isValid = await form.trigger(field);
     if (isValid) {
       setCurrentStep(currentStep + 1);
     }
@@ -195,9 +195,6 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
             <DialogDescription>
               Fill out the details below to submit a new assignment request. The price will be calculated automatically.
             </DialogDescription>
-            <Button variant="ghost" size="icon" className="absolute top-4 right-4" onClick={() => setIsTutorialModalOpen(true)}>
-              <Video className="h-6 w-6" />
-            </Button>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 flex-grow overflow-auto pr-6 -mr-6 pb-4">
@@ -393,8 +390,16 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
               )}
 
             <DialogFooter className="pt-4 border-t mt-4 gap-3 sm:gap-2">
+              <Button variant="ghost" size="icon" onClick={() => setIsTutorialModalOpen(true)}>
+                <Video className="h-6 w-6" />
+              </Button>
+              <div className="flex-grow" />
               {currentStep > 0 && <Button type="button" variant="secondary" onClick={() => setCurrentStep(currentStep - 1)}>Previous</Button>}
-              {currentStep < 5 && <Button type="button" onClick={handleNextStep}>Next</Button>}
+              {currentStep === 0 && <Button type="button" onClick={() => handleNextStep("moduleName")}>Next</Button>}
+              {currentStep === 1 && <Button type="button" onClick={() => handleNextStep("projectNumber")}>Next</Button>}
+              {currentStep === 2 && <Button type="button" onClick={() => handleNextStep("wordCount")}>Next</Button>}
+              {currentStep === 3 && <Button type="button" onClick={() => handleNextStep("deadline")}>Next</Button>}
+              {currentStep === 4 && <Button type="button" onClick={() => handleNextStep("notes")}>Next</Button>}
               {currentStep === 5 && <Button type="submit" disabled={isCalculating || calculatedPrice === null}>Submit Homework</Button>}
             </DialogFooter>
             </form>
