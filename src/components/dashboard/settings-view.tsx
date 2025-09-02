@@ -12,6 +12,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import type { PricingConfig, UserRole, NotificationTemplates } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "../ui/badge";
 import { AlertCircle, Save, Database, DollarSign, Users, Bell, Code } from "lucide-react";
 import { Alert, AlertDescription } from "../ui/alert";
 import { getNotificationTemplates, saveNotificationTemplates } from "@/lib/actions";
@@ -168,10 +169,10 @@ function ReferenceCodeManagerView() {
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger>
-                                            {rc.ownerName ? `${rc.ownerName} (${rc.ownerEmail})` : 'Unassigned'}
+                                            {(rc as any).ownerName ? `${(rc as any).ownerName} (${(rc as any).ownerEmail})` : 'Unassigned'}
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                            <p>{rc.ownerName} ({rc.ownerEmail})</p>
+                                            <p>{(rc as any).ownerName} ({(rc as any).ownerEmail})</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
@@ -544,7 +545,7 @@ function NotificationTemplateManagerView() {
             <CardHeader>
                 <CardTitle>Notification Template Customization</CardTitle>
                 <CardDescription>
-                    Customize automatic notification templates sent throughout the system. Use variables like '{homeworkId}', '{studentName}', etc.
+                    Customize automatic notification templates sent throughout the system. Use variables like {'{homeworkId}'}, {'{studentName}'}, etc.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
