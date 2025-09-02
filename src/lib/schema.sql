@@ -221,4 +221,9 @@ BEGIN
       ('completed', 'Homework Completed', 'Sent when homework is completed', 'Your homework #{homeworkId} has been completed and final files are ready for download.', '["homeworkId"]');
    END IF;
    
+   IF NOT EXISTS (SELECT 1 FROM notification_templates WHERE template_id = 'homework_submitted') THEN
+      INSERT INTO notification_templates (template_id, name, description, template, variables) VALUES 
+      ('homework_submitted', 'Homework Submitted', 'Sent when homework is submitted successfully', 'Your homework has been submitted successfully! Reference Code: {referenceCode}. Payment Amount: ${paymentAmount}. Please transfer the payment to: {bankDetails}. Your homework will begin processing once payment is confirmed.', '["referenceCode", "paymentAmount", "bankDetails"]');
+   END IF;
+   
 END $$;
