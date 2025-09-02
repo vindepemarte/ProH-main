@@ -619,7 +619,11 @@ export async function fetchWorkersForSuperWorker(superWorkerId: string): Promise
 export async function fetchAllReferenceCodes(): Promise<ReferenceCode[]> {
     const client = await pool.connect();
     try {
-        const res = await client.query("SELECT code, role, owner_id as ownerId FROM reference_codes");
+        const res = await client.query(`
+            SELECT rc.code, rc.role, rc.owner_id as ownerId, u.name as ownerName, u.email as ownerEmail
+            FROM reference_codes rc
+            LEFT JOIN users u ON rc.owner_id = u.id
+        `);
         return res.rows;
     } finally {
         client.release();
