@@ -111,6 +111,9 @@ interface AppContextType {
   handleUpdateSuperWorkerFee: (workerId: string, fee: number) => Promise<void>;
   handleAssignSuperWorker: (homeworkId: string, workerId: string) => Promise<void>;
   fetchSuperWorkersForAssignment: () => Promise<void>;
+
+  showConfetti: boolean;
+  setShowConfetti: (show: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -138,6 +141,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pricingConfig, setPricingConfig] = useState<PricingConfig | null>(null);
   const [submissionAlert, setSubmissionAlert] = useState<{open: boolean, message: string}>({open: false, message: ''});
   const [analyticsDateRange, setAnalyticsDateRange] = useState<DateRange>({ from: addDays(new Date(), -30), to: new Date()});
+  const [showConfetti, setShowConfetti] = useState(false);
   
   // Super Worker Management State
   const [superWorkerFees, setSuperWorkerFees] = useState<SuperWorkerWithFee[]>([]);
@@ -560,6 +564,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         setIsNewHomeworkModalOpen(false);
         setSubmissionAlert({ open: true, message: result.message });
+        setShowConfetti(true);
       } catch (error) {
         console.error(error);
         toast({ variant: 'destructive', title: "Submission Error", description: "Could not submit your homework." });
@@ -638,6 +643,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     handleUpdateSuperWorkerFee,
     handleAssignSuperWorker,
     fetchSuperWorkersForAssignment: fetchSuperWorkersForAssignmentHandler,
+    showConfetti,
+    setShowConfetti,
   };
 
   return (

@@ -15,9 +15,20 @@ import { Badge } from "./ui/badge";
 import RequestChangesModal from "./modals/request-changes-modal";
 import SuperWorkerChangeModal from "./modals/super-worker-change-modal";
 import FileUploadModal from "./modals/file-upload-modal";
+import Confetti from 'react-confetti';
+import { useEffect } from 'react';
 
 export default function Dashboard() {
-    const { user, isHomeworkModalOpen, setIsHomeworkModalOpen, isNewHomeworkModalOpen, setIsNewHomeworkModalOpen, unreadNotificationCount, handleMarkNotificationsAsRead, isRequestChangesModalOpen, setIsRequestChangesModalOpen, isSuperWorkerChangeModalOpen, setIsSuperWorkerChangeModalOpen, isFileUploadModalOpen, setIsFileUploadModalOpen } = useAppContext();
+    const { user, isHomeworkModalOpen, setIsHomeworkModalOpen, isNewHomeworkModalOpen, setIsNewHomeworkModalOpen, unreadNotificationCount, handleMarkNotificationsAsRead, isRequestChangesModalOpen, setIsRequestChangesModalOpen, isSuperWorkerChangeModalOpen, setIsSuperWorkerChangeModalOpen, isFileUploadModalOpen, setIsFileUploadModalOpen, showConfetti, setShowConfetti } = useAppContext();
+
+    useEffect(() => {
+        if (showConfetti) {
+            const timer = setTimeout(() => {
+                setShowConfetti(false);
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [showConfetti, setShowConfetti]);
 
     if (!user) return null;
 
@@ -139,6 +150,7 @@ export default function Dashboard() {
             <RequestChangesModal open={isRequestChangesModalOpen} onOpenChange={setIsRequestChangesModalOpen} />
             <SuperWorkerChangeModal open={isSuperWorkerChangeModalOpen} onOpenChange={setIsSuperWorkerChangeModalOpen} />
             <FileUploadModal open={isFileUploadModalOpen} onOpenChange={setIsFileUploadModalOpen} />
+            {showConfetti && <Confetti width={window.innerWidth} height={window.innerHeight} />}
         </div>
     );
 }

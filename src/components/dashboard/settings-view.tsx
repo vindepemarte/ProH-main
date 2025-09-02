@@ -1,22 +1,131 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { useAppContext } from "@/contexts/app-context"
-import { useEffect, useMemo, useState } from "react"
-import { ScrollArea } from "../ui/scroll-area"
-import type { PricingConfig, UserRole, NotificationTemplates } from "@/lib/types"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
-import { Badge } from "../ui/badge"
-import { AlertCircle, Save } from "lucide-react"
-import { Alert, AlertDescription } from "../ui/alert"
-import { getNotificationTemplates, saveNotificationTemplates } from "@/lib/actions"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { useAppContext } from "@/contexts/app-context";
+import { useEffect, useMemo, useState } from "react";
+import { ScrollArea } from "../ui/scroll-area";
+import type { PricingConfig, UserRole, NotificationTemplates } from "@/lib/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Badge } from "../ui/badge";
+import { AlertCircle, Save, Database, DollarSign, Users, Bell, Code } from "lucide-react";
+import { Alert, AlertDescription } from "../ui/alert";
+import { getNotificationTemplates, saveNotificationTemplates } from "@/lib/actions";
 
-function ReferenceCodeManager({ allUsers }: { allUsers: any[] }) {
-    const { referenceCodes, fetchAllCodes, handleUpdateReferenceCode } = useAppContext();
+function PricingConfigView() {
+    const { pricingConfig, handleSavePricingConfig } = useAppContext();
+    const [localConfig, setLocalConfig] = useState<PricingConfig | null>(pricingConfig);
+
+    useEffect(() => {
+        setLocalConfig(pricingConfig);
+    }, [pricingConfig]);
+
+    const handleWordTierChange = (tier: string, value: string) => {
+        if (!localConfig) return;
+        const newConfig = {...localConfig};
+        newConfig.wordTiers[parseInt(tier)] = parseFloat(value) || 0;
+        setLocalConfig(newConfig);
+    }
+
+    const onSave = () => {
+        if (localConfig) {
+            handleSavePricingConfig(localConfig);
+        }
+    }
+
+    const wordCountTiers = Array.from({ length: 40 }, (_, i) => (i + 1) * 500);
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Pricing Configuration</CardTitle>
+                <CardDescription>Set pricing tiers for word counts (in £).</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <ScrollArea className="h-72">
+                    <div className="space-y-4">
+                        {wordCountTiers.map(tier => (
+                            <div key={tier} className="grid grid-cols-2 gap-4 items-center">
+                                <Label>{tier} words</Label>
+                                <Input 
+                                    type="number" 
+                                    placeholder="Price" 
+                                    step="0.01" 
+                                    value={localConfig?.wordTiers[tier] || ''}
+                                    onChange={(e) => handleWordTierChange(String(tier), e.target.value)}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </ScrollArea>
+                <Button className="mt-4" onClick={onSave}>Save Pricing</Button>
+            </CardContent>
+        </Card>
+    )
+}
+
+function FeeAndDeadlineConfigView() {
+    const { pricingConfig, handleSavePricingConfig } = useAppContext();
+    const [localConfig, setLocalConfig] = useState<PricingConfig | null>(pricingConfig);
+
+    useEffect(() => {
+        setLocalConfig(pricingConfig);
+    }, [pricingConfig]);
+
+    const handleFeeChange = (type: 'agent' | 'super_worker', value: string) => {
+        if (!localConfig) return;
+        const newConfig = {...localConfig};
+        newConfig.fees[type] = parseFloat(value) || 0;
+        setLocalConfig(newConfig);
+    }
+
+    const handleDeadlineTierChange = (tier: string, value: string) => {
+        if (!localConfig) return;
+        const newConfig = {...localConfig};
+        newConfig.deadlineTiers[parseInt(tier)] = parseFloat(value) || 0;
+        setLocalConfig(newConfig);
+    }
+
+    const onSave = () => {
+        if (localConfig) {
+            handleSavePricingConfig(localConfig);
+        }
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Fee & Deadline Configuration</CardTitle>
+                <CardDescription>Set fees and deadline surcharges.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-2">
+                    <Label>Agent Fee (£ per 500 words)</Label>
+                    <Input type="number" placeholder="e.g., 5.00" step="0.01" value={localConfig?.fees.agent || ''} onChange={(e) => handleFeeChange('agent', e.target.value)}/>
+                    <p className="text-sm text-muted-foreground mt-2">
+                        <strong>Note:</strong> Super Worker fees are now managed individually in the "Super Worker Fees" section below.
+                    </p>
+                </div>
+                <div className="space-y-2 pt-4 border-t">
+                    <Label>Within 1 Day Surcharge (£)</Label>
+                    <Input type="number" step="0.01" value={localConfig?.deadlineTiers[1] || ''} onChange={(e) => handleDeadlineTierChange('1', e.target.value)} />
+                     <Label>Within 3 Days Surcharge (£)</Label>
+                    <Input type="number" step="0.01" value={localConfig?.deadlineTiers[3] || ''} onChange={(e) => handleDeadlineTierChange('3', e.target.value)} />
+                    <Label>Within 7 Days Surcharge (£)</Label>
+                    <Input type="number" step="0.01" value={localConfig?.deadlineTiers[7] || ''} onChange={(e) => handleDeadlineTierChange('7', e.target.value)} />
+                </div>
+                <Button onClick={onSave}>Save Fees & Deadlines</Button>
+            </CardContent>
+        </Card>
+    )
+}
+
+function ReferenceCodeManagerView() {
+    const { referenceCodes, fetchAllCodes, handleUpdateReferenceCode, allUsers } = useAppContext();
     const [editingCodes, setEditingCodes] = useState<Record<string, string>>({});
 
     useEffect(() => {
@@ -38,27 +147,37 @@ function ReferenceCodeManager({ allUsers }: { allUsers: any[] }) {
         return <p className="text-muted-foreground">No reference codes found.</p>;
     }
     
-    return referenceCodes.map(rc => {
-         if (!rc.role) return null;
-         const owner = allUsers.find(u => u.id === rc.ownerId);
-         return (
-             <div key={rc.code} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                 <Label className="w-full sm:w-48">For <span className="capitalize">{rc.role.replace(/_/g, ' ')}s</span>:</Label>
-                 <Input 
-                    className="font-mono flex-grow"
-                    value={editingCodes[rc.code] || rc.code}
-                    onChange={(e) => handleCodeChange(rc.code, e.target.value)}
-                 />
-                 <div className="w-full sm:w-48 text-sm text-muted-foreground">
-                    {owner ? `${owner.name} (${owner.email})` : 'Unassigned'}
-                 </div>
-                 <Button onClick={() => handleSave(rc.code)} disabled={!editingCodes[rc.code] || editingCodes[rc.code] === rc.code}>Save</Button>
-             </div>
-         )
-     }).filter(Boolean);
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Reference Code Management</CardTitle>
+                <CardDescription>View and edit all reference codes in the system.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+                {referenceCodes.map(rc => {
+                    if (!rc.role) return null;
+                    const owner = allUsers.find(u => u.id === rc.ownerId);
+                    return (
+                        <div key={rc.code} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                            <Label className="w-full sm:w-48">For <span className="capitalize">{rc.role.replace(/_/g, ' ')}s</span>:</Label>
+                            <Input 
+                                className="font-mono flex-grow"
+                                value={editingCodes[rc.code] || rc.code}
+                                onChange={(e) => handleCodeChange(rc.code, e.target.value)}
+                            />
+                            <div className="w-full sm:w-48 text-sm text-muted-foreground">
+                                {owner ? `${owner.name} (${owner.email})` : 'Unassigned'}
+                            </div>
+                            <Button onClick={() => handleSave(rc.code)} disabled={!editingCodes[rc.code] || editingCodes[rc.code] === rc.code}>Save</Button>
+                        </div>
+                    )
+                }).filter(Boolean)}
+            </CardContent>
+        </Card>
+    )
 }
 
-function CreateReferenceCode() {
+function CreateReferenceCodeView() {
     const { allUsers, handleCreateReferenceCode } = useAppContext();
     const [code, setCode] = useState('');
     const [role, setRole] = useState<UserRole>('student');
@@ -135,7 +254,7 @@ function CreateReferenceCode() {
     )
 }
 
-function DatabaseMigrationRunner() {
+function DatabaseMigrationRunnerView() {
     const { user, toast } = useAppContext();
     const [isRunning, setIsRunning] = useState(false);
     const [migrationStatus, setMigrationStatus] = useState<'pending' | 'success' | 'error'>('pending');
@@ -210,7 +329,7 @@ function DatabaseMigrationRunner() {
     );
 }
 
-function SuperWorkerFeesManager() {
+function SuperWorkerFeesManagerView() {
     const { user, superWorkerFees, fetchSuperWorkerFees, handleUpdateSuperWorkerFee, toast } = useAppContext();
     const [editingFees, setEditingFees] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(false);
@@ -356,7 +475,7 @@ function SuperWorkerFeesManager() {
     );
 }
 
-function NotificationTemplateManager() {
+function NotificationTemplateManagerView() {
     const { user, toast } = useAppContext();
     const [templates, setTemplates] = useState<NotificationTemplates | null>(null);
     const [loading, setLoading] = useState(true);
@@ -417,7 +536,7 @@ function NotificationTemplateManager() {
             <CardHeader>
                 <CardTitle>Notification Template Customization</CardTitle>
                 <CardDescription>
-                    Customize automatic notification templates sent throughout the system. Use variables like {'{homeworkId}'}, {'{studentName}'}, etc.
+                    Customize automatic notification templates sent throughout the system. Use variables like '{homeworkId}', '{studentName}', etc.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -484,113 +603,45 @@ function NotificationTemplateManager() {
 }
 
 export default function SettingsView() {
-    const { user, pricingConfig, handleSavePricingConfig, allUsers } = useAppContext();
-    const [localConfig, setLocalConfig] = useState<PricingConfig | null>(pricingConfig);
+    const { user } = useAppContext();
 
-    useEffect(() => {
-        setLocalConfig(pricingConfig);
-    }, [pricingConfig]);
-
-    if (!user) return null;
-
-    const handleWordTierChange = (tier: string, value: string) => {
-        if (!localConfig) return;
-        const newConfig = {...localConfig};
-        newConfig.wordTiers[parseInt(tier)] = parseFloat(value) || 0;
-        setLocalConfig(newConfig);
-    }
-    
-    const handleFeeChange = (type: 'agent' | 'super_worker', value: string) => {
-        if (!localConfig) return;
-        const newConfig = {...localConfig};
-        newConfig.fees[type] = parseFloat(value) || 0;
-        setLocalConfig(newConfig);
-    }
-
-    const handleDeadlineTierChange = (tier: string, value: string) => {
-        if (!localConfig) return;
-        const newConfig = {...localConfig};
-        newConfig.deadlineTiers[parseInt(tier)] = parseFloat(value) || 0;
-        setLocalConfig(newConfig);
-    }
-
-    const onSave = () => {
-        if (localConfig) {
-            handleSavePricingConfig(localConfig);
-        }
-    }
-
-    const wordCountTiers = Array.from({ length: 40 }, (_, i) => (i + 1) * 500);
+    if (!user || user.role !== 'super_agent') return null;
 
     return (
         <div className="p-4 space-y-4">
             <h2 className="text-2xl font-bold">Settings</h2>
-             {(user.role === 'super_agent') && (
-                <>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Pricing Configuration</CardTitle>
-                        <CardDescription>Set pricing tiers for word counts (in £).</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ScrollArea className="h-72">
-                            <div className="space-y-4">
-                                {wordCountTiers.map(tier => (
-                                    <div key={tier} className="grid grid-cols-2 gap-4 items-center">
-                                        <Label>{tier} words</Label>
-                                        <Input 
-                                            type="number" 
-                                            placeholder="Price" 
-                                            step="0.01" 
-                                            value={localConfig?.wordTiers[tier] || ''}
-                                            onChange={(e) => handleWordTierChange(String(tier), e.target.value)}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        </ScrollArea>
-                        <Button className="mt-4" onClick={onSave}>Save Pricing</Button>
-                    </CardContent>
-                </Card>
-                <NotificationTemplateManager />
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Fee & Deadline Configuration</CardTitle>
-                        <CardDescription>Set fees and deadline surcharges.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>Agent Fee (£ per 500 words)</Label>
-                            <Input type="number" placeholder="e.g., 5.00" step="0.01" value={localConfig?.fees.agent || ''} onChange={(e) => handleFeeChange('agent', e.target.value)}/>
-                            <p className="text-sm text-muted-foreground mt-2">
-                                <strong>Note:</strong> Super Worker fees are now managed individually in the "Super Worker Fees" section below.
-                            </p>
-                        </div>
-                        <div className="space-y-2 pt-4 border-t">
-                            <Label>Within 1 Day Surcharge (£)</Label>
-                            <Input type="number" step="0.01" value={localConfig?.deadlineTiers[1] || ''} onChange={(e) => handleDeadlineTierChange('1', e.target.value)} />
-                             <Label>Within 3 Days Surcharge (£)</Label>
-                            <Input type="number" step="0.01" value={localConfig?.deadlineTiers[3] || ''} onChange={(e) => handleDeadlineTierChange('3', e.target.value)} />
-                            <Label>Within 7 Days Surcharge (£)</Label>
-                            <Input type="number" step="0.01" value={localConfig?.deadlineTiers[7] || ''} onChange={(e) => handleDeadlineTierChange('7', e.target.value)} />
-                        </div>
-                        <Button onClick={onSave}>Save Fees & Deadlines</Button>
-                    </CardContent>
-                </Card>
-                <SuperWorkerFeesManager />
-                <DatabaseMigrationRunner />
-                 <Card>
-                    <CardHeader>
-                        <CardTitle>Reference Code Management</CardTitle>
-                        <CardDescription>View and edit all reference codes in the system.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                        <ReferenceCodeManager allUsers={allUsers} />
-                    </CardContent>
-                </Card>
-                <CreateReferenceCode />
-                </>
-            )}
+            <Tabs defaultValue="pricing">
+                <TabsList className="grid w-full grid-cols-7">
+                    <TabsTrigger value="pricing"><DollarSign className="mr-2 h-4 w-4" />Pricing</TabsTrigger>
+                    <TabsTrigger value="fees"><DollarSign className="mr-2 h-4 w-4" />Fees & Deadlines</TabsTrigger>
+                    <TabsTrigger value="ref-codes"><Code className="mr-2 h-4 w-4" />Ref. Codes</TabsTrigger>
+                    <TabsTrigger value="create-ref-code"><Code className="mr-2 h-4 w-4" />Create Ref. Code</TabsTrigger>
+                    <TabsTrigger value="migration"><Database className="mr-2 h-4 w-4" />Migration</TabsTrigger>
+                    <TabsTrigger value="super-worker-fees"><Users className="mr-2 h-4 w-4" />Super Worker Fees</TabsTrigger>
+                    <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4" />Notifications</TabsTrigger>
+                </TabsList>
+                <TabsContent value="pricing">
+                    <PricingConfigView />
+                </TabsContent>
+                <TabsContent value="fees">
+                    <FeeAndDeadlineConfigView />
+                </TabsContent>
+                <TabsContent value="ref-codes">
+                    <ReferenceCodeManagerView />
+                </TabsContent>
+                <TabsContent value="create-ref-code">
+                    <CreateReferenceCodeView />
+                </TabsContent>
+                <TabsContent value="migration">
+                    <DatabaseMigrationRunnerView />
+                </TabsContent>
+                <TabsContent value="super-worker-fees">
+                    <SuperWorkerFeesManagerView />
+                </TabsContent>
+                <TabsContent value="notifications">
+                    <NotificationTemplateManagerView />
+                </TabsContent>
+            </Tabs>
         </div>
     )
 }
