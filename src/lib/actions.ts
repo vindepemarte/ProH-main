@@ -624,6 +624,7 @@ export async function fetchAllReferenceCodes(): Promise<ReferenceCode[]> {
             FROM reference_codes rc
             LEFT JOIN users u ON rc.owner_id = u.id
         `);
+        console.log('Fetched reference codes:', res.rows);
         return res.rows;
     } finally {
         client.release();
