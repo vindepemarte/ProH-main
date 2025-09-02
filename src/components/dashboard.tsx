@@ -9,7 +9,7 @@ import SettingsView from "./dashboard/settings-view";
 import NotificationsView from "./dashboard/notifications-view";
 import UsersView from "./dashboard/users-view";
 import HomeworkModal from "./modals/homework-modal";
-import NewHomeworkModal from "./modals/new-homework-modal";
+import NewHomeworkStepperModal from "./modals/new-homework-stepper-modal";
 import { PlusCircle, BookOpen, BarChart3, Bell, Settings, Users } from "lucide-react";
 import { Badge } from "./ui/badge";
 import RequestChangesModal from "./modals/request-changes-modal";
@@ -135,7 +135,7 @@ export default function Dashboard() {
                 </div>
             </Tabs>
             <HomeworkModal open={isHomeworkModalOpen} onOpenChange={setIsHomeworkModalOpen} />
-            <NewHomeworkModal open={isNewHomeworkModalOpen} onOpenChange={setIsNewHomeworkModalOpen} />
+            <NewHomeworkStepperModal open={isNewHomeworkModalOpen} onOpenChange={setIsNewHomeworkModalOpen} />
             <RequestChangesModal open={isRequestChangesModalOpen} onOpenChange={setIsRequestChangesModalOpen} />
             <SuperWorkerChangeModal open={isSuperWorkerChangeModalOpen} onOpenChange={setIsSuperWorkerChangeModalOpen} />
             <FileUploadModal open={isFileUploadModalOpen} onOpenChange={setIsFileUploadModalOpen} />
