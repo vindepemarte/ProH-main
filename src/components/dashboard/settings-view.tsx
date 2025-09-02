@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Badge } from "../ui/badge";
 import { AlertCircle, Save, Database, DollarSign, Users, Bell, Code } from "lucide-react";
 import { Alert, AlertDescription } from "../ui/alert";
-import { getNotificationTemplates, saveNotificationTemplates } from "@/lib/actions";
+import NotificationTemplatesView from "./notification-templates";
 
 function PricingConfigView() {
     const { pricingConfig, handleSavePricingConfig } = useAppContext();
@@ -549,7 +549,7 @@ function NotificationTemplateManagerView() {
                 
                 <ScrollArea className="h-96">
                     <div className="space-y-4">
-                        {Object.entries(templates).filter(([key, template]) => !template.variables.includes('homeworkId')).map(([key, template]) => (
+                        {Object.entries(templates).map(([key, template]) => (
                             <div key={key} className="border rounded-lg p-4 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <div>
@@ -583,7 +583,7 @@ function NotificationTemplateManagerView() {
                                     />
                                 ) : (
                                     <div className="bg-muted/50 p-3 rounded text-sm font-mono">
-                                        {template.template.replace(/{homeworkId}/g, '[homeworkId]')}
+                                        {template.template}
                                     </div>
                                 )}
                             </div>
@@ -639,7 +639,7 @@ export default function SettingsView() {
                     <SuperWorkerFeesManagerView />
                 </TabsContent>
                 <TabsContent value="notifications">
-                    <NotificationTemplateManagerView />
+                    <NotificationTemplatesView />
                 </TabsContent>
             </Tabs>
         </div>

@@ -145,6 +145,8 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
       files: uploadedFiles 
     });
     setFormCompleted(true);
+    form.reset();
+    setCurrentStep(0);
   }
 
   const handleNextStep = async (field: any) => {
