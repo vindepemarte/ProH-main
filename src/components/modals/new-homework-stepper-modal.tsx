@@ -162,30 +162,6 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
     }
   }
 
-  if (formCompleted) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Homework Request Submitted!</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <p>Your homework request has been submitted successfully.</p>
-            <p>Please use the order reference code with the payment.</p>
-            <Button onClick={() => {
-              setFormCompleted(false);
-              form.reset();
-              setCalculatedPrice(null);
-              setCurrentStep(0);
-              onOpenChange(false);
-            }}>Close</Button>
-          </div>
-          <Confetti width={window.innerWidth} height={window.innerHeight} />
-        </DialogContent>
-      </Dialog>
-    )
-  }
-
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>

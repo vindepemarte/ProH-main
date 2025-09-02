@@ -583,7 +583,7 @@ function NotificationTemplateManagerView() {
                                     />
                                 ) : (
                                     <div className="bg-muted/50 p-3 rounded text-sm font-mono">
-                                        {template.template}
+                                        {template.template.replace(/{homeworkId}/g, '[homeworkId]')}
                                     </div>
                                 )}
                             </div>
