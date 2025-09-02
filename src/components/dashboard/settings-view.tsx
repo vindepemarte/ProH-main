@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ScrollArea } from "../ui/scroll-area";
 import type { PricingConfig, UserRole, NotificationTemplates } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Badge } from "../ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertCircle, Save, Database, DollarSign, Users, Bell, Code } from "lucide-react";
 import { Alert, AlertDescription } from "../ui/alert";
 import { getNotificationTemplates, saveNotificationTemplates } from "@/lib/actions";
@@ -164,8 +164,17 @@ function ReferenceCodeManagerView() {
                                 value={editingCodes[rc.code] || rc.code}
                                 onChange={(e) => handleCodeChange(rc.code, e.target.value)}
                             />
-                            <div className="w-full sm:w-48 text-sm text-muted-foreground">
-                                {rc.ownerName ? `${rc.ownerName} (${rc.ownerEmail})` : 'Unassigned'}
+                            <div className="w-full sm:w-48 text-sm text-muted-foreground truncate">
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            {rc.ownerName ? `${rc.ownerName} (${rc.ownerEmail})` : 'Unassigned'}
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>{rc.ownerName} ({rc.ownerEmail})</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
                             </div>
                             <Button onClick={() => handleSave(rc.code)} disabled={!editingCodes[rc.code] || editingCodes[rc.code] === rc.code}>Save</Button>
                         </div>
