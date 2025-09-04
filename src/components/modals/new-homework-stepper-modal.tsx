@@ -293,7 +293,7 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
                               selected={field.value}
                               onSelect={field.onChange}
                               onDone={() => {
-                                // Close the popover after selecting a date
+                                // Close the popover when Done is clicked
                                 const popover = document.querySelector('[data-state="open"]');
                                 if (popover) {
                                   const trigger = popover.previousElementSibling as HTMLElement;

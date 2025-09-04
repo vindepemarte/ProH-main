@@ -172,7 +172,7 @@ export default function SuperWorkerChangeModal({ open, onOpenChange }: SuperWork
                                     selected={newDeadline}
                                     onSelect={handleDeadlineChange}
                                     onDone={() => {
-                                        // Close the popover after selecting a date
+                                        // Close the popover when Done is clicked
                                         const popover = document.querySelector('[data-state="open"]');
                                         if (popover) {
                                             const trigger = popover.previousElementSibling as HTMLElement;

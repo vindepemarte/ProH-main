@@ -31,7 +31,7 @@ function Calendar({
   const defaultClassNames = getDefaultClassNames();
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col bg-background rounded-md overflow-hidden">
       <DayPicker
         showOutsideDays={showOutsideDays}
         className={cn(
@@ -173,8 +173,12 @@ function Calendar({
         {...props}
       />
       {onDone && (
-        <div className="flex justify-end p-2">
-          <Button onClick={onDone} size="sm" className="mt-2">
+        <div className="flex justify-center p-2 bg-background">
+          <Button 
+            onClick={onDone} 
+            size="sm" 
+            className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90"
+          >
             Done
           </Button>
         </div>
