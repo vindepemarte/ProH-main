@@ -265,11 +265,11 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                 <div>
                                     <div className="flex justify-between items-center mb-2">
                                         <h4 className="text-sm font-medium text-muted-foreground">Worker Draft Files</h4>
-                                        {user.role === 'worker' && hw.status === 'in_progress' && (
-                                            <Button size="sm" variant="outline" onClick={openFileUploadModal} className="gap-2">
-                                                <Upload className="w-3 h-3" /> Upload Draft
-                                            </Button>
-                                        )}
+                                        {user.role === 'worker' && (hw.status === 'in_progress' || hw.status === 'assigned_to_worker') && (
+                            <Button size="sm" variant="outline" onClick={openFileUploadModal} className="gap-2">
+                                <Upload className="w-3 h-3" /> Upload Draft
+                            </Button>
+                        )}
                                     </div>
                                     {hw.draftFiles && hw.draftFiles.length > 0 ? (
                                         <div className="flex flex-col gap-2">
