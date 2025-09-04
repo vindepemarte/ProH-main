@@ -970,7 +970,7 @@ export async function getSuperAgentDashboardStats(from?: Date, to?: Date): Promi
                 COALESCE(SUM(CASE WHEN h.status = 'completed' THEN (h.earnings->>'super_worker')::numeric ELSE 0 END), 0) as "toBePaid",
                 COUNT(CASE WHEN h.status = 'completed' THEN 1 END) as "assignmentsDone"
             FROM users u
-            LEFT JOIN homeworks h ON h.status != 'refund' AND h.created_at::date BETWEEN $1 AND $2
+            LEFT JOIN homeworks h ON h.super_worker_id = u.id AND h.status != 'refund' AND h.created_at::date BETWEEN $1 AND $2
             WHERE u.role = 'super_worker'
             GROUP BY u.id, u.name
             ORDER BY "assignmentsDone" DESC

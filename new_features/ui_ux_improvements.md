@@ -6,8 +6,8 @@ Enhance the user interface and experience with various improvements to badges, c
 ## Tasks
 
 ### Beta Badge Implementation
-- [ ] Add 'Beta' badge to navbar
-- [ ] Implement circular animation effect around badge on desktop like this : /* From Uiverse.io by Spacious74 */ 
+- [x] Add 'Beta' badge to navbar
+- [x] Implement circular animation effect around badge on desktop like this : /* From Uiverse.io by Spacious74 */ 
 .button {
   cursor: pointer;
   font-size: 1.4rem;
@@ -69,8 +69,8 @@ Enhance the user interface and experience with various improvements to badges, c
   position: absolute;
 }
 
-- [ ] Position badge under 'Welcome <Role>' text on mobile view
-- [ ] Ensure responsive design across device sizes
+- [x] Position badge under 'Welcome <Role>' text on mobile view
+- [x] Ensure responsive design across device sizes
 
 ### Calendar Component Enhancement
 - [ ] Add 'Done' button to confirm date selection

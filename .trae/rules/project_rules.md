@@ -1,0 +1,1 @@
+1. Do not try to run the app locally, we deploy to github through 'commit, push' etc. Then I will restart the Coolify VPS and I will check if the app is running or has issues.
