@@ -311,15 +311,10 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                     <div className="flex justify-between items-center mb-2">
                                         <h4 className="text-sm font-medium text-muted-foreground">Final Files</h4>
                                         {user.role === 'super_worker' && hw.status === 'worker_draft' && hw.draftFiles && hw.draftFiles.length > 0 && (
-                                            <div className="flex gap-2">
-                                                <Button size="sm" variant="default" onClick={() => approveDraftFiles(hw.id)} className="gap-2">
-                                                    <Check className="w-3 h-3" /> Approve Draft
-                                                </Button>
-                                                <Button size="sm" variant="outline" onClick={openFileUploadModal} className="gap-2">
-                                                    <Upload className="w-3 h-3" /> Upload Final
-                                                </Button>
-                                            </div>
-                                        )}
+                            <Button size="sm" variant="outline" onClick={openFileUploadModal} className="gap-2">
+                                <Upload className="w-3 h-3" /> Upload Final
+                            </Button>
+                        )}
                                         {user.role === 'super_worker' && hw.status === 'final_payment_approval' && hw.draftFiles && hw.draftFiles.length > 0 && (
                                             <Button size="sm" variant="outline" onClick={openFileUploadModal} className="gap-2">
                                                 <Upload className="w-3 h-3" /> Upload Final
@@ -501,6 +496,14 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         <div className="flex flex-wrap gap-3">
                              {hw.status === 'requested_changes' && (
                                 <Button className="w-full sm:w-auto" onClick={handleAcceptChanges}><Check className="mr-2"/> Accept Changes</Button>
+                            )}
+                            {hw.status === 'worker_draft' && hw.draftFiles && hw.draftFiles.length > 0 && (
+                                <Button 
+                                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700" 
+                                    onClick={() => handleStatusChange('final_payment_approval')}
+                                >
+                                    <Check className="mr-2"/> Approve Draft
+                                </Button>
                             )}
                             <Select onValueChange={handleAssignWorker} defaultValue={hw.workerId || ""}>
                                 <SelectTrigger className="w-full sm:w-auto flex-grow">
