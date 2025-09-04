@@ -366,7 +366,18 @@ export default function AnalyticsView() {
                                 mode="range"
                                 defaultMonth={date?.from}
                                 selected={date}
-                                onSelect={handleDateRangeChange}
+                                onSelect={(selectedDate) => {
+                                    handleDateRangeChange(selectedDate);
+                                    // Only close the popover when both from and to dates are selected
+                                    if (selectedDate?.from && selectedDate?.to) {
+                                        // Close the popover after selecting a date range
+                                        const popover = document.querySelector('[data-state="open"]');
+                                        if (popover) {
+                                            const trigger = popover.previousElementSibling as HTMLElement;
+                                            if (trigger) trigger.click();
+                                        }
+                                    }
+                                }}
                                 numberOfMonths={1}
                             />
                         </PopoverContent>

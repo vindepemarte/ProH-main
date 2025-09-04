@@ -1,329 +1,138 @@
-Below is a “road‑map” of everything you’ll need to touch to let a Super Agent assign a specific Super Worker to a homework, let the Super Agent set a fee per worker, and have the modal show the correct amount that should be paid.
+# ProH Platform Improvements Roadmap
 
-TL;DR
+This file provides an overview of planned improvements for the ProH platform. Each feature is now detailed in a separate file within the `new_features` folder.
 
-DB – add assigned_super_worker_id to homeworks + a per‑worker fee table.
-Migrations – create/alter those tables.
-Types – update TS interfaces (Homework, User, PricingConfig).
-Actions – compute earnings using the worker’s fee.
-Context – expose a helper to set the worker and fetch the fee list.
-UI –
-Settings: list all super workers → edit fee.
-Homework modal: show “Assigned Super Worker” + the correct “Super Worker Pay” and “Profit”.
-Optional – adjust analytics & tests.
-Let’s dive into each step.
+## High Priority Improvements
 
-1️⃣ Database Schema Changes
-a. Assign a Super Worker to a Homework
-Add a nullable foreign key to the homeworks table.
+### 1. [Super Worker Workflow Enhancement](/new_features/super_worker_workflow.md)
+- Request Changes Button
+- Price Increase Functionality
+- Approval Workflow
+- Final Job Approval Process
 
-ALTER TABLE homeworks
-  ADD COLUMN assigned_super_worker_id UUID REFERENCES users(id);
+### 2. [Super Agent Dashboard Enhancements](/new_features/super_agent_dashboard.md)
+- Homework Modal Improvements
+- Payment Approval Workflow
 
-Why nullable?
-Homeworks can be created before a worker is assigned.
+### 3. [Student Dashboard Improvements](/new_features/student_dashboard.md)
+- Payment Information Section
+- Price Increase Response UI
 
-b. Per‑Worker Fee Table
-We could store the fee on the user row (fee_per_500), but that would be a single value for all workers.
-Instead, keep a separate table so you can change a worker’s fee without touching the user profile.
+## Medium Priority Improvements
 
-CREATE TABLE super_worker_fees (
-  super_worker_id UUID PRIMARY KEY REFERENCES users(id),
-  fee_per_500 NUMERIC(10,2) NOT NULL
-);
+### 4. [Agent Dashboard Enhancements](/new_features/agent_dashboard.md)
+- Analytics Implementation
+- Data Visualization
+- Pricing Configuration
 
-Default fee – on migration create a default record for every existing super worker:
+### 5. [UI/UX Improvements](/new_features/ui_ux_improvements.md)
+- Beta Badge Implementation
+- Calendar Component Enhancement
+- Modal Improvements
 
-INSERT INTO super_worker_fees (super_worker_id, fee_per_500)
-SELECT id, 5.00 FROM users WHERE role = 'super_worker';
+## Lower Priority Improvements
 
-2️⃣ Migrations
-If you’re using Flyway, Liquibase, or Prisma, add a new migration file that runs the two SQL statements above.
-If you’re using plain node-postgres, just drop a new file in db/migrations/ and call it during app start.
+### 6. [Advanced View System](/new_features/advanced_view_system.md)
+- View System Architecture
+- Component Implementation
+- Database Integration
 
-3️⃣ TypeScript Interfaces
-// src/lib/types.ts
-export interface Homework {
-  id: string;
-  // … other fields …
-  assigned_super_worker_id?: string | null;
-  earnings: HomeworkEarnings;
-}
+### 7. [User Feedback System](/new_features/user_feedback_system.md)
+- Homework Grading
+- Platform Feedback
+- Periodic Rating System
 
-export interface HomeworkEarnings {
-  total: number;
-  agent?: number;
-  super_worker?: number;
-  profit: number;
-}
+### 8. [Platform Documentation](/new_features/platform_documentation.md)
+- Guide Tab
 
-export interface User {
-  id: string;
-  role: UserRole;
-  // ... existing fields ...
-}
+### 9. [Notification System](/new_features/notification_system.md)
+- ntfy Integration
 
-export interface SuperWorkerFee {
-  super_worker_id: string;
-  fee_per_500: number;
-}
+### 10. [Notion-like Forms System](/new_features/notion_like_forms.md)
+- Form Builder Interface
+- Form Field Types
+- Form Database Integration
+- Form Sharing System
+- Form Response Views
+- Form Management
+- Advanced Form Features
 
-export interface PricingConfig {
-  wordTiers: Record<number, number>;
-  fees: {
-    agent: number;
-    super_worker: number;   // **global fallback**
-  };
-  deadlineTiers: Record<number, number>;
-}
+## Technical Implementation Notes
 
-If you already have a PricingConfig interface, just add the fees.super_worker field.
+### Recommended Libraries
 
-4️⃣ Business Logic (actions.ts)
-a. Helper to fetch a worker’s fee
-async function getWorkerFee(workerId: string): Promise<number> {
-  const res = await client.query(
-    'SELECT fee_per_500 FROM super_worker_fees WHERE super_worker_id = $1',
-    [workerId]
-  );
-  return res.rows[0]?.fee_per_500 ?? pricingConfig.fees.super_worker;
-}
+1. **TanStack Table (React Table)**
+   - Perfect for advanced table views with sorting, filtering, pagination
+   - Highly customizable and performant
+   - Great for displaying homework data and form responses in tabular format
+   - GitHub: @tanstack/react-table
 
-b. Update Homework Creation
-// src/lib/actions.ts
-export const createHomework = async (data: CreateHomeworkPayload) => {
-  const { student, ...hw } = data;
-  // existing logic ...
+2. **React DnD (Drag and Drop)**
+   - Essential for Notion-like drag-and-drop functionality
+   - Can create Kanban boards for homework status management
+   - Perfect for form builder interface to arrange and reorder form fields
+   - Allows reordering of homework items
 
-  const assignedWorkerFee = hw.assigned_super_worker_id
-    ? await getWorkerFee(hw.assigned_super_worker_id)
-    : pricingConfig.fees.super_worker;
+3. **Radix UI Primitives**
+   - Already using shadcn/ui which is built on Radix
+   - Provides excellent modal, dropdown, and dialog components
+   - Perfect foundation for Notion-like UI elements
+   - Accessible form components that can be styled consistently
 
-  const superWorkerPay = assignedWorkerFee * (hw.word_count / 500);
-  const agentPay = agent ? (agentFeePer500 * (hw.word_count / 500)) : 0;
-  const profit = finalPrice - agentPay - superWorkerPay;
+4. **React Virtual / TanStack Virtual**
+   - For handling large lists of homework and form responses efficiently
+   - Essential when displaying hundreds of items
 
-  const earnings: HomeworkEarnings = {
-    total: finalPrice,
-    agent: agentPay > 0 ? agentPay : undefined,
-    super_worker: superWorkerPay,
-    profit
-  };
+5. **React Hook Form**
+   - Performant, flexible and extensible forms with easy validation
+   - Perfect for both form builder and form submission interfaces
+   - Supports complex validation rules and conditional fields
+   - GitHub: react-hook-form/react-hook-form
 
-  await client.query(
-    `INSERT INTO homeworks (id, student_id, agent_id, assigned_super_worker_id,
-     status, module_name, project_number, word_count, deadline, notes,
-     price, earnings, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),now())
-     RETURNING *`,
-    [
-      homeworkId,
-      student.id,
-      agent?.id,
-      hw.assigned_super_worker_id || null,
-      'payment_approval',
-      hw.moduleName,
-      hw.projectNumber,
-      hw.word_count,
-      hw.deadline,
-      hw.notes,
-      finalPrice,
-      JSON.stringify(earnings)
-    ]
-  );
+6. **Zod**
+   - TypeScript-first schema validation with static type inference
+   - Ideal for form validation and ensuring data integrity
+   - Can generate TypeScript types from schemas
+   - GitHub: colinhacks/zod
 
-  // … files logic …
-};
+7. **DraftJS or TipTap**
+   - Rich text editing capabilities for long-form questions and answers
+   - Customizable toolbar and formatting options
+   - GitHub: facebook/draft-js or ueberdosis/tiptap
 
-c. Update Homework Update (assigning/re‑assigning a worker)
-export const assignSuperWorkerToHomework = async (
-  homeworkId: string,
-  workerId: string
-) => {
-  const workerFee = await getWorkerFee(workerId);
+8. **React Beautiful DnD**
+   - Beautiful and accessible drag and drop for lists
+   - Perfect for reordering form fields in the form builder
+   - GitHub: atlassian/react-beautiful-dnd
 
-  // Pull existing data
-  const hwRes = await client.query(
-    'SELECT word_count, price, agent_id FROM homeworks WHERE id = $1',
-    [homeworkId]
-  );
-  const hw = hwRes.rows[0];
-  if (!hw) throw new Error('Homework not found');
+### Implementation Strategy
 
-  // Re‑calculate earnings with new worker fee
-  const superWorkerPay = workerFee * (hw.word_count / 500);
-  const agentPay = hw.agent_id
-    ? await getAgentFee() * (hw.word_count / 500)
-    : 0;
-  const profit = hw.price - agentPay - superWorkerPay;
+1. Start with core workflow improvements (Super Worker, Super Agent, Student dashboards)
+   - Implement one role's changes at a time
+   - Test thoroughly before moving to next role
 
-  const earnings: HomeworkEarnings = {
-    total: hw.price,
-    agent: agentPay > 0 ? agentPay : undefined,
-    super_worker: superWorkerPay,
-    profit
-  };
+2. Add analytics and pricing configurations
+   - Ensure database schema supports new metrics
+   - Implement calculations without affecting existing functionality
 
-  await client.query(
-    `UPDATE homeworks
-     SET assigned_super_worker_id = $1,
-         earnings = $2
-     WHERE id = $3`,
-    [workerId, JSON.stringify(earnings), homeworkId]
-  );
-};
+3. Enhance UI components (Beta badge, Calendar, modals)
+   - Make isolated UI changes that don't affect core functionality
 
-Tip: If you want a single “update” endpoint that handles many fields, just extend the payload to include assigned_super_worker_id and run the same logic.
+4. Build advanced view system
+   - Start with table view as foundation
+   - Add other views incrementally
+   - Ensure backward compatibility with existing list views
 
-5️⃣ Context & API Layer
-Add helper functions to app-context.tsx:
+5. Implement Notion-like Forms system
+   - Begin with database schema design for forms and responses
+   - Create basic form builder UI with essential field types
+   - Implement form submission and response storage
+   - Add form sharing functionality
+   - Develop response viewing interfaces
+   - Add advanced features incrementally
 
-// src/contexts/app-context.tsx
-export const assignSuperWorker = async (
-  homeworkId: string,
-  workerId: string
-) => {
-  await client.assignSuperWorkerToHomework(homeworkId, workerId);
-  // refetch homework list or update state
-};
+6. Add feedback and notification systems last
+   - These are supplementary features that won't break core functionality
 
-Also expose a list of super workers with fees so the settings UI can display them:
+This approach ensures each feature can be implemented independently without breaking existing functionality, allowing for incremental deployment and testing.
 
-export const fetchSuperWorkerFees = async () => {
-  const res = await client.query(`
-    SELECT u.id, u.name, f.fee_per_500
-    FROM users u
-    JOIN super_worker_fees f ON u.id = f.super_worker_id
-    WHERE u.role = 'super_worker'
-  `);
-  return res.rows;
-};
-
-And a mutation to update a worker’s fee:
-
-export const updateSuperWorkerFee = async (workerId: string, fee: number) => {
-  await client.query(
-    'UPDATE super_worker_fees SET fee_per_500 = $1 WHERE super_worker_id = $2',
-    [fee, workerId]
-  );
-};
-
-6️⃣ UI Changes
-a. Settings Tab – “Super Worker Fees”
-Add a new card under the existing pricing settings:
-
-{/* src/components/dashboard/settings-view.tsx */}
-{user.role === 'super_agent' && (
-  <>
-    {/* ... existing cards ... */}
-
-    <Card>
-      <CardHeader>
-        <CardTitle>Super Worker Fees</CardTitle>
-        <CardDescription>Set the fee for each Super Worker (per 500 words).</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {superWorkerFees.map((s) => (
-            <div key={s.id} className="grid grid-cols-3 gap-4 items-center">
-              <span>{s.name}</span>
-              <Input
-                type="number"
-                step="0.01"
-                value={s.fee_per_500}
-                onChange={(e) =>
-                  handleWorkerFeeChange(s.id, parseFloat(e.target.value))
-                }
-              />
-              <Button
-                size="sm"
-                onClick={() => updateSuperWorkerFee(s.id, s.fee_per_500)}
-              >
-                Save
-              </Button>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  </>
-)}
-
-You’ll need to pull superWorkerFees from context in useEffect and maintain local state for edits.
-
-b. Assigning a Worker to a Homework
-Add a dropdown (or modal) in the homework modal when the super agent is viewing the homework:
-
-{user.role === 'super_agent' && (
-  <div className="mt-4">
-    <Label>Assign Super Worker</Label>
-    <Select
-      value={hw.assigned_super_worker_id ?? ''}
-      onChange={(e) => assignSuperWorker(hw.id, e.target.value)}
-    >
-      <option value="">None</option>
-      {superWorkers.map((w) => (
-        <option key={w.id} value={w.id}>
-          {w.name}
-        </option>
-      ))}
-    </Select>
-  </div>
-)}
-
-c. Updated Financials in the Homework Modal
-Replace the hard‑coded super_worker fee with the one that comes from hw.earnings.super_worker:
-
-{user.role === 'super_agent' && hw.earnings && (
-  <div className="p-4 bg-primary/10 rounded-lg space-y-2 mt-4">
-    <h3 className="font-bold">Financials</h3>
-    <p>Revenue: £{Number(hw.earnings.total || 0).toFixed(2)}</p>
-    {hw.earnings.agent && hw.earnings.agent > 0 && (
-      <p>Agent Pay: £{Number(hw.earnings.agent).toFixed(2)}</p>
-    )}
-    <p>S.Worker Pay: £{Number(hw.earnings.super_worker || 0).toFixed(2)}</p>
-    <p className={`font-semibold ${
-      (hw.earnings.profit || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-    }`}>
-      Profit: £{Number(hw.earnings.profit || 0).toFixed(2)}
-    </p>
-    <p>Assigned Super Worker: {hw.assigned_super_worker_name}</p>
-  </div>
-)}
-
-Tip: Store the worker’s name in the homework row or join it when fetching.
-You can add a computed column assigned_super_worker_name or do a small JOIN when selecting.
-
-7️⃣ Bonus: Analytics & Tests
-Analytics – If you already group earnings by worker, add assigned_super_worker_id to your query.
-Unit Tests –
-Test getWorkerFee returns global fallback when no row exists.
-Test createHomework calculates super_worker pay from the assigned worker.
-Test assignSuperWorkerToHomework updates earnings correctly.
-8️⃣ Quick Checklist
-#	What to Do	Where?
-1	Add assigned_super_worker_id column	schema.sql + migration
-2	Create super_worker_fees table	schema.sql + migration
-3	Update TS interfaces	src/lib/types.ts
-4	Add getWorkerFee, assignSuperWorkerToHomework	src/lib/actions.ts
-5	Expose new context helpers	src/contexts/app-context.tsx
-6	Update Settings UI for worker fees	src/components/dashboard/settings-view.tsx
-7	Add worker assignment UI in modal	src/components/modals/homework-modal.tsx
-8	Update financials rendering	same modal file
-9	Refetch/refresh data after changes	context functions + state updates
-10	Add migration scripts & tests	db/migrations/, test folder
-That’s the whole stack in a nutshell! 🚀
-
-Gotchas & Things to Watch
-Issue	Why it matters	Fix
-Missing foreign key	If a worker gets deleted, homeworks.assigned_super_worker_id becomes orphaned	Add ON DELETE SET NULL on the FK
-Fee changes after assignment	Should the existing homework keep the old fee?	Decide policy: keep old fee or re‑calculate. (My code keeps the old fee unless reassigned)
-Global fallback	Some workers might not have a custom fee set	getWorkerFee falls back to pricingConfig.fees.super_worker
-UI performance	Pulling all workers each time can be heavy	Cache the list in context or use SWR
-Next Steps
-Create the migrations and run them against a dev DB.
-Update your TS types and re‑compile.
-Add the new helper functions to your context.
-Roll out the UI changes incrementally, starting with the settings card.
-Test end‑to‑end: create a homework → assign a worker → check the modal → ensure earnings are correct.
-If you hit a snag or need more code examples (e.g., how to wire up the Select component or how to fetch the worker’s name in the modal), just let me know! Happy coding! 🎉

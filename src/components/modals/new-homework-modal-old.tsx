@@ -261,6 +261,12 @@ export default function NewHomeworkModal({ open, onOpenChange }: NewHomeworkModa
                         selected={field.value}
                         onSelect={(date) => {
                           field.onChange(date);
+                          // Close the popover after selecting a date
+                          const popover = document.querySelector('[data-state="open"]');
+                          if (popover) {
+                            const trigger = popover.previousElementSibling as HTMLElement;
+                            if (trigger) trigger.click();
+                          }
                         }}
                         disabled={(date) => {
                           const today = new Date();

@@ -170,7 +170,15 @@ export default function SuperWorkerChangeModal({ open, onOpenChange }: SuperWork
                                 <Calendar
                                     mode="single"
                                     selected={newDeadline}
-                                    onSelect={handleDeadlineChange}
+                                    onSelect={(date) => {
+                                        handleDeadlineChange(date);
+                                        // Close the popover after selecting a date
+                                        const popover = document.querySelector('[data-state="open"]');
+                                        if (popover) {
+                                            const trigger = popover.previousElementSibling as HTMLElement;
+                                            if (trigger) trigger.click();
+                                        }
+                                    }}
                                     disabled={(date) => date < new Date()}
                                     initialFocus
                                 />
