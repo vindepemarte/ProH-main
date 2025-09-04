@@ -2084,6 +2084,7 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
         throw new Error('Missing required parameters: homeworkId and approvedBy');
     }
     
+    let studentId: string; // Declare at function scope
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -2100,6 +2101,7 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
         }
         
         const homework = homeworkRes.rows[0];
+        studentId = homework.student_id; // Store for later use outside transaction
         console.log('Found homework:', { id: homework.id, status: homework.status });
         
         if (homework.status !== 'worker_draft') {
@@ -2158,12 +2160,12 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
         console.log('Sending notifications');
         
         // Notify student
-        await createNotificationFromTemplate(
-            'superWorkerReviewUpload',
-            { homeworkId },
-            homework.student_id,
-            homeworkId
-        );
+         await createNotificationFromTemplate(
+             'superWorkerReviewUpload',
+             { homeworkId },
+             studentId,
+             homeworkId
+         );
         
         // Notify super agents
         const client2 = await pool.connect();
