@@ -74,7 +74,7 @@ export default function CookieConsent() {
       
       {/* Cookie Banner */}
       <div 
-        className={`fixed bottom-4 left-4 right-4 md:left-auto md:right-6 md:max-w-md z-50 transition-all duration-300 transform ${
+        className={`fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:max-w-md z-[60] transition-all duration-300 transform ${
           isVisible ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'
         }`}
       >
