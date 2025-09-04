@@ -162,10 +162,10 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
   return (
     <>
       <Dialog open={open} onOpenChange={(open) => {
-        if (!open && form.formState.isDirty) {
+        if (!open) {
           setIsCloseConfirmOpen(true);
-        } else if (!open) {
-          onOpenChange(false);
+        } else {
+          onOpenChange(open);
         }
       }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-sm">
