@@ -2078,9 +2078,16 @@ export async function fetchSuperWorkersForAssignment(): Promise<User[]> {
 }
 
 export async function approveDraftFiles(homeworkId: string, approvedBy: string): Promise<void> {
+    console.log('approveDraftFiles called with:', { homeworkId, approvedBy });
+    
+    if (!homeworkId || !approvedBy) {
+        throw new Error('Missing required parameters: homeworkId and approvedBy');
+    }
+    
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        console.log('Database transaction started');
         
         // Get the homework
         const homeworkRes = await client.query(
@@ -2089,13 +2096,14 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
         );
         
         if (homeworkRes.rows.length === 0) {
-            throw new Error('Homework not found');
+            throw new Error(`Homework not found with id: ${homeworkId}`);
         }
         
         const homework = homeworkRes.rows[0];
+        console.log('Found homework:', { id: homework.id, status: homework.status });
         
         if (homework.status !== 'worker_draft') {
-            throw new Error('Homework is not in worker_draft status');
+            throw new Error(`Homework is not in worker_draft status. Current status: ${homework.status}`);
         }
         
         // Check if there are draft files to approve
@@ -2108,6 +2116,8 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
             throw new Error('No draft files to approve');
         }
         
+        console.log(`Found ${draftFilesRes.rows.length} draft files to approve`);
+        
         // Check if super worker uploaded any final files
         const finalFilesRes = await client.query(
             'SELECT * FROM homework_files WHERE homework_id = $1 AND file_type = $2',
@@ -2116,13 +2126,17 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
         
         // If no super worker review files exist, convert draft files to final approved files
         if (finalFilesRes.rows.length === 0) {
+            console.log('No super worker review files found, converting draft files to final approved');
             await client.query(
                 'UPDATE homework_files SET file_type = $1, updated_at = NOW() WHERE homework_id = $2 AND file_type = $3',
                 ['final_approved', homeworkId, 'worker_draft']
             );
+        } else {
+            console.log(`Found ${finalFilesRes.rows.length} super worker review files`);
         }
         
         // Update homework status
+        console.log('Updating homework status to final_payment_approval');
         await client.query(
             'UPDATE homeworks SET status = $1, updated_at = NOW() WHERE id = $2',
             ['final_payment_approval', homeworkId]
