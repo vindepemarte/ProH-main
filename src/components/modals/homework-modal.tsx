@@ -500,7 +500,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                             {hw.status === 'worker_draft' && hw.draftFiles && hw.draftFiles.length > 0 && (
                                 <Button 
                                     className="w-full sm:w-auto bg-green-600 hover:bg-green-700" 
-                                    onClick={() => handleStatusChange('final_payment_approval')}
+                                    onClick={() => approveDraftFiles(hw.id)}
                                 >
                                     <Check className="mr-2"/> Approve Draft
                                 </Button>
