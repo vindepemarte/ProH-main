@@ -291,8 +291,8 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
                             <Calendar
                               mode="single"
                               selected={field.value}
-                              onSelect={(date) => {
-                                field.onChange(date);
+                              onSelect={field.onChange}
+                              onDone={() => {
                                 // Close the popover after selecting a date
                                 const popover = document.querySelector('[data-state="open"]');
                                 if (popover) {
