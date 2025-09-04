@@ -891,11 +891,19 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
                 break;
                 
             case 'agent':
-                // Agent: Profit from their students' homeworks (minus refunded homeworks)
+                // Agent: Profit from their students' homeworks (payment tracking after payment_approval)
                 userFilter = ` AND h.student_id IN (SELECT id FROM users WHERE referred_by = $3)`;
                 params.push(user.id);
-                metric1Query = `SELECT TO_CHAR(h.created_at, '${dateFormat}') as date, SUM((h.earnings->>'agent')::numeric) as value FROM homeworks h WHERE h.status != 'refund' AND h.earnings->>'agent' IS NOT NULL ${dateFilter} ${userFilter} ${groupByClause}`;
-                metric2Query = `SELECT TO_CHAR(h.created_at, '${dateFormat}') as date, COUNT(*) as value FROM homeworks h WHERE h.status != 'refund' ${dateFilter} ${userFilter} ${groupByClause}`;
+                metric1Query = `SELECT TO_CHAR(h.created_at, '${dateFormat}') as date, 
+                    SUM(CASE 
+                        WHEN h.status IN ('assigned_to_super_worker', 'assigned_to_worker', 'in_progress', 'worker_draft', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed') 
+                        THEN (h.earnings->>'agent')::numeric 
+                        WHEN h.status IN ('declined', 'refund') 
+                        THEN -(h.earnings->>'agent')::numeric 
+                        ELSE 0 
+                    END) as value 
+                FROM homeworks h WHERE h.earnings->>'agent' IS NOT NULL ${dateFilter} ${userFilter} ${groupByClause}`;
+                metric2Query = `SELECT TO_CHAR(h.created_at, '${dateFormat}') as date, COUNT(*) as value FROM homeworks h WHERE h.status NOT IN ('refund') ${dateFilter} ${userFilter} ${groupByClause}`;
                 break;
                 
             case 'worker':
@@ -903,11 +911,19 @@ export async function getAnalyticsForUser(user: User, from?: Date, to?: Date): P
                 return { metric1: [], metric2: [] };
                 
             case 'super_worker':
-                // Super Worker: Fee earnings + assignments specifically assigned to them
+                // Super Worker: Fee earnings + assignments specifically assigned to them (payment tracking after payment_approval)
                 userFilter = ` AND super_worker_id = $3`;
                 params.push(user.id);
-                metric1Query = `SELECT TO_CHAR(created_at, '${dateFormat}') as date, SUM((earnings->>'super_worker')::numeric) as value FROM homeworks WHERE status != 'refund' AND earnings->>'super_worker' IS NOT NULL ${dateFilter} ${userFilter} ${groupByClause}`;
-                metric2Query = `SELECT TO_CHAR(created_at, '${dateFormat}') as date, COUNT(*) as value FROM homeworks WHERE status != 'refund' ${dateFilter} ${userFilter} ${groupByClause}`;
+                metric1Query = `SELECT TO_CHAR(created_at, '${dateFormat}') as date, 
+                    SUM(CASE 
+                        WHEN status IN ('assigned_to_super_worker', 'assigned_to_worker', 'in_progress', 'worker_draft', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed') 
+                        THEN (earnings->>'super_worker')::numeric 
+                        WHEN status IN ('declined', 'refund') 
+                        THEN -(earnings->>'super_worker')::numeric 
+                        ELSE 0 
+                    END) as value 
+                FROM homeworks WHERE earnings->>'super_worker' IS NOT NULL ${dateFilter} ${userFilter} ${groupByClause}`;
+                metric2Query = `SELECT TO_CHAR(created_at, '${dateFormat}') as date, COUNT(*) as value FROM homeworks WHERE status NOT IN ('refund') ${dateFilter} ${userFilter} ${groupByClause}`;
                 break;
                 
             case 'super_agent':
@@ -975,38 +991,70 @@ export async function getSuperAgentDashboardStats(from?: Date, to?: Date): Promi
         
         const average_profit_per_homework = homeworkCount > 0 ? parseFloat(total_profit) / homeworkCount : 0;
         
-        // Calculate "To be paid" amounts for current month (ONLY from completed homeworks)
+        // Calculate "To be paid" amounts for current month (from homeworks past payment_approval, minus declined/refunded)
         const paymentStatsRes = await client.query(`
             SELECT 
-                (SELECT COALESCE(SUM(CASE WHEN status = 'completed' THEN (earnings->>'super_worker')::numeric ELSE 0 END), 0) FROM homeworks WHERE status != 'refund' AND earnings->>'super_worker' IS NOT NULL ${monthFilter}) as to_be_paid_super_worker,
-                (SELECT COALESCE(SUM(CASE WHEN status = 'completed' THEN (earnings->>'agent')::numeric ELSE 0 END), 0) FROM homeworks WHERE status != 'refund' AND earnings->>'agent' IS NOT NULL ${monthFilter}) as to_be_paid_agents
+                (SELECT COALESCE(
+                    SUM(CASE 
+                        WHEN status IN ('assigned_to_super_worker', 'assigned_to_worker', 'in_progress', 'worker_draft', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed') 
+                        THEN (earnings->>'super_worker')::numeric 
+                        WHEN status IN ('declined', 'refund') 
+                        THEN -(earnings->>'super_worker')::numeric 
+                        ELSE 0 
+                    END), 0
+                ) FROM homeworks WHERE earnings->>'super_worker' IS NOT NULL ${monthFilter}) as to_be_paid_super_worker,
+                (SELECT COALESCE(
+                    SUM(CASE 
+                        WHEN status IN ('assigned_to_super_worker', 'assigned_to_worker', 'in_progress', 'worker_draft', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed') 
+                        THEN (earnings->>'agent')::numeric 
+                        WHEN status IN ('declined', 'refund') 
+                        THEN -(earnings->>'agent')::numeric 
+                        ELSE 0 
+                    END), 0
+                ) FROM homeworks WHERE earnings->>'agent' IS NOT NULL ${monthFilter}) as to_be_paid_agents
         `, monthParams);
         
         const { to_be_paid_super_worker, to_be_paid_agents } = paymentStatsRes.rows[0];
         
-        // Students per Agent with current month payments (ONLY from completed homeworks)
+        // Students per Agent with current month payments (from homeworks past payment_approval, minus declined/refunded)
         const agentStudentsRes = await client.query(`
             SELECT 
                 u.name as "agentName", 
                 COUNT(DISTINCT s.id) as "studentCount",
-                COALESCE(SUM(CASE WHEN h.status = 'completed' THEN (h.earnings->>'agent')::numeric ELSE 0 END), 0) as "toBePaid",
-                COUNT(CASE WHEN h.status = 'completed' THEN 1 END) as "completedHomeworks"
+                COALESCE(
+                    SUM(CASE 
+                        WHEN h.status IN ('assigned_to_super_worker', 'assigned_to_worker', 'in_progress', 'worker_draft', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed') 
+                        THEN (h.earnings->>'agent')::numeric 
+                        WHEN h.status IN ('declined', 'refund') 
+                        THEN -(h.earnings->>'agent')::numeric 
+                        ELSE 0 
+                    END), 0
+                ) as "toBePaid",
+                COUNT(CASE WHEN h.status IN ('assigned_to_super_worker', 'assigned_to_worker', 'in_progress', 'worker_draft', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed') THEN 1 END) as "completedHomeworks"
             FROM users u
             LEFT JOIN users s ON s.referred_by = u.id
-            LEFT JOIN homeworks h ON h.student_id = s.id AND h.status != 'refund' AND h.created_at::date BETWEEN $1 AND $2
+            LEFT JOIN homeworks h ON h.student_id = s.id AND h.created_at::date BETWEEN $1 AND $2
             WHERE u.role = 'agent'
             GROUP BY u.id, u.name
             ORDER BY "studentCount" DESC
         `, monthParams);
         
-        // Super Workers data with current month payments (ONLY from completed homeworks)
+        // Super Workers data with current month payments (from homeworks past payment_approval, minus declined/refunded)
         const superWorkersRes = await client.query(`
             SELECT 
                 u.name as "superWorkerName",
-                COALESCE(SUM(CASE WHEN h.status = 'completed' THEN (h.earnings->>'super_worker')::numeric ELSE 0 END), 0) as "toBePaid",
-                COUNT(CASE WHEN h.status = 'completed' THEN 1 END) as "assignmentsDone"
+                COALESCE(
+                    SUM(CASE 
+                        WHEN h.status IN ('assigned_to_super_worker', 'assigned_to_worker', 'in_progress', 'worker_draft', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed') 
+                        THEN (h.earnings->>'super_worker')::numeric 
+                        WHEN h.status IN ('declined', 'refund') 
+                        THEN -(h.earnings->>'super_worker')::numeric 
+                        ELSE 0 
+                    END), 0
+                ) as "toBePaid",
+                COUNT(CASE WHEN h.status IN ('assigned_to_super_worker', 'assigned_to_worker', 'in_progress', 'worker_draft', 'requested_changes', 'final_payment_approval', 'word_count_change', 'deadline_change', 'completed') THEN 1 END) as "assignmentsDone"
             FROM users u
-            LEFT JOIN homeworks h ON h.super_worker_id = u.id AND h.status != 'refund' AND h.created_at::date BETWEEN $1 AND $2
+            LEFT JOIN homeworks h ON h.super_worker_id = u.id AND h.created_at::date BETWEEN $1 AND $2
             WHERE u.role = 'super_worker'
             GROUP BY u.id, u.name
             ORDER BY "assignmentsDone" DESC
