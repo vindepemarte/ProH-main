@@ -2130,7 +2130,7 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
         if (finalFilesRes.rows.length === 0) {
             console.log('No super worker review files found, converting draft files to final approved');
             await client.query(
-                'UPDATE homework_files SET file_type = $1, updated_at = NOW() WHERE homework_id = $2 AND file_type = $3',
+                'UPDATE homework_files SET file_type = $1 WHERE homework_id = $2 AND file_type = $3',
                 ['final_approved', homeworkId, 'worker_draft']
             );
         } else {

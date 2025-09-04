@@ -28,7 +28,7 @@ Enhance the workflow for Super Workers by adding functionality for requesting ch
 - [ ] Implement 'Final Payment Approval' status in `HomeworkStatus` enum
 - [ ] Add Approve/Reject buttons for Super Agent to confirm full payment
 - [ ] Create notification template for payment issues
-- [ ] Implement status transition: Approved → 'Completed', Rejected → stays 'Final Payment Approval'
+- [ ] Implement status transition: Approved → 'Completed'
 
 ## Implementation Strategy
 

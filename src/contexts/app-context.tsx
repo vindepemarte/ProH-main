@@ -557,6 +557,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             fetchUserNotifications()
           ]);
           
+          // Update the selected homework with fresh data from the updated homeworks list
+          if (selectedHomework && selectedHomework.id === homeworkId) {
+            const updatedHomeworks = await fetchHomeworksForUser(user);
+            const updatedHomework = updatedHomeworks.find(hw => hw.id === homeworkId);
+            if (updatedHomework) {
+              setSelectedHomework(updatedHomework);
+            }
+          }
+          
           toast({ title: "Draft Files Approved", description: "Draft files have been approved and moved to final files." });
       } catch (error) {
           console.error(error);

@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import type { HomeworkStatus } from "@/lib/types";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Search, Filter } from "lucide-react";
+import PaymentInfo from "./payment-info";
+import PriceIncreaseRequests from './price-increase-requests';
 
 const statusColors: Record<HomeworkStatus, string> = {
   payment_approval: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30",
@@ -132,6 +134,12 @@ export default function HomeworkList() {
 
     return (
         <div className="space-y-4">
+            {/* Payment Information for Students */}
+            <PaymentInfo />
+            
+            {/* Price Increase Requests Section */}
+            <PriceIncreaseRequests />
+            
             {/* Filter Controls */}
             <div className="flex flex-col sm:flex-row gap-4 p-4 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-2 min-w-0 flex-1">

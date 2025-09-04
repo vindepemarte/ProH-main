@@ -6,15 +6,15 @@ Enhance the Student dashboard with better payment information display and functi
 ## Tasks
 
 ### Payment Information Section
-- [ ] Add Bank Details section at the top of dashboard
-- [ ] Display Super Agent's bank information
-- [ ] Add clear instructions about using homework reference code for payments
-- [ ] Implement reference code generation and display
+- [x] Add Bank Details section at the top of dashboard
+- [x] Display Super Agent's bank information
+- [x] Add clear instructions about using homework reference code for payments
+- [x] Implement reference code generation and display
 
 ### Price Increase Response UI
-- [ ] Add UI components for viewing price increase requests
-- [ ] Implement Approve/Reject buttons for responding to requests
-- [ ] Add notifications for price change request status
+- [x] Add UI components for viewing price increase requests
+- [x] Implement Approve/Reject buttons for responding to requests
+- [x] Add notifications for price change request status
 
 ## Implementation Strategy
 
