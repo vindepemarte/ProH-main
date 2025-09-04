@@ -77,6 +77,7 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
   const [isTutorialModalOpen, setIsTutorialModalOpen] = useState(false);
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
   const [formCompleted, setFormCompleted] = useState(false);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   
   const form = useForm<HomeworkFormValues>({
     resolver: zodResolver(homeworkFormSchema),
@@ -267,7 +268,7 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
                         <FormLabel>Deadline</FormLabel>
-                        <Popover>
+                        <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
@@ -287,18 +288,13 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-1" align="start">
+                          <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
                               selected={field.value}
                               onSelect={field.onChange}
                               onDone={() => {
-                                // Close the popover when Done is clicked
-                                const popover = document.querySelector('[data-state="open"]');
-                                if (popover) {
-                                  const trigger = popover.previousElementSibling as HTMLElement;
-                                  if (trigger) trigger.click();
-                                }
+                                setDatePickerOpen(false);
                               }}
                               disabled={(date) => {
                                 const today = new Date();

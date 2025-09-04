@@ -28,6 +28,7 @@ export default function SuperWorkerChangeModal({ open, onOpenChange }: SuperWork
     const [newPrice, setNewPrice] = useState<number>(0);
     const [isCalculating, setIsCalculating] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [datePickerOpen, setDatePickerOpen] = useState(false);
 
     useEffect(() => {
         if (hw && open) {
@@ -153,7 +154,7 @@ export default function SuperWorkerChangeModal({ open, onOpenChange }: SuperWork
                     {/* Deadline Input */}
                     <div className="space-y-2">
                         <Label>New Deadline</Label>
-                        <Popover>
+                        <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                             <PopoverTrigger asChild>
                                 <Button
                                     variant="outline"
@@ -166,18 +167,13 @@ export default function SuperWorkerChangeModal({ open, onOpenChange }: SuperWork
                                     {newDeadline ? format(newDeadline, "PPP") : "Pick a date"}
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-1" align="start">
+                            <PopoverContent className="w-auto p-0" align="start">
                                 <Calendar
                                     mode="single"
                                     selected={newDeadline}
                                     onSelect={handleDeadlineChange}
                                     onDone={() => {
-                                        // Close the popover when Done is clicked
-                                        const popover = document.querySelector('[data-state="open"]');
-                                        if (popover) {
-                                            const trigger = popover.previousElementSibling as HTMLElement;
-                                            if (trigger) trigger.click();
-                                        }
+                                        setDatePickerOpen(false);
                                     }}
                                     disabled={(date) => date < new Date()}
                                     initialFocus

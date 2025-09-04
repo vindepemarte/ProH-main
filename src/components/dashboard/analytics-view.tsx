@@ -198,6 +198,7 @@ function SuperWorkersTable() {
 
 export default function AnalyticsView() {
     const { user, analyticsData, setAnalyticsDateRange, superAgentStats } = useAppContext();
+    const [datePickerOpen, setDatePickerOpen] = useState(false);
     const [date, setDate] = useState<DateRange | undefined>({
         from: addDays(new Date(), -30), // Default to last 30 days
         to: new Date(),
@@ -337,7 +338,7 @@ export default function AnalyticsView() {
                     <Button variant="outline" size="sm" onClick={() => setPresetRange(0)}>Today</Button>
                     <Button variant="outline" size="sm" onClick={() => setPresetRange(7)}>7D</Button>
                     <Button variant="outline" size="sm" onClick={() => setPresetRange(30)}>30D</Button>
-                    <Popover>
+                    <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                         <PopoverTrigger asChild>
                             <Button
                                 id="date"
@@ -368,12 +369,7 @@ export default function AnalyticsView() {
                                 selected={date}
                                 onSelect={handleDateRangeChange}
                                 onDone={() => {
-                                    // Always close the popover when Done is clicked
-                                    const popover = document.querySelector('[data-state="open"]');
-                                    if (popover) {
-                                        const trigger = popover.previousElementSibling as HTMLElement;
-                                        if (trigger) trigger.click();
-                                    }
+                                    setDatePickerOpen(false);
                                 }}
                                 numberOfMonths={1}
                             />
