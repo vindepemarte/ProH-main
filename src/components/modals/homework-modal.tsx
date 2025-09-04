@@ -15,7 +15,10 @@ import { ScrollArea } from "../ui/scroll-area"
 
 const statusColors: Record<HomeworkStatus, string> = {
   payment_approval: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30",
+  assigned_to_super_worker: "bg-cyan-500/20 text-cyan-700 border-cyan-500/30",
+  assigned_to_worker: "bg-sky-500/20 text-sky-700 border-sky-500/30",
   in_progress: "bg-blue-500/20 text-blue-700 border-blue-500/30",
+  worker_draft: "bg-violet-500/20 text-violet-700 border-violet-500/30",
   requested_changes: "bg-orange-500/20 text-orange-700 border-orange-500/30",
   final_payment_approval: "bg-green-500/20 text-green-700 border-green-500/30",
   word_count_change: "bg-purple-500/20 text-purple-700 border-purple-500/30",
@@ -108,7 +111,8 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
         pricingConfig,
         superWorkersForAssignment,
         handleAssignSuperWorker,
-        fetchSuperWorkersForAssignment
+        fetchSuperWorkersForAssignment,
+        approveDraftFiles
     } = useAppContext();
 
 
@@ -306,7 +310,17 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                 <div>
                                     <div className="flex justify-between items-center mb-2">
                                         <h4 className="text-sm font-medium text-muted-foreground">Final Files</h4>
-                                        {user.role === 'super_worker' && ['final_payment_approval'].includes(hw.status) && hw.draftFiles && hw.draftFiles.length > 0 && (
+                                        {user.role === 'super_worker' && hw.status === 'worker_draft' && hw.draftFiles && hw.draftFiles.length > 0 && (
+                                            <div className="flex gap-2">
+                                                <Button size="sm" variant="default" onClick={() => approveDraftFiles(hw.id)} className="gap-2">
+                                                    <Check className="w-3 h-3" /> Approve Draft
+                                                </Button>
+                                                <Button size="sm" variant="outline" onClick={openFileUploadModal} className="gap-2">
+                                                    <Upload className="w-3 h-3" /> Upload Final
+                                                </Button>
+                                            </div>
+                                        )}
+                                        {user.role === 'super_worker' && hw.status === 'final_payment_approval' && hw.draftFiles && hw.draftFiles.length > 0 && (
                                             <Button size="sm" variant="outline" onClick={openFileUploadModal} className="gap-2">
                                                 <Upload className="w-3 h-3" /> Upload Final
                                             </Button>
@@ -401,7 +415,10 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="payment_approval">Payment Approval</SelectItem>
+                                    <SelectItem value="assigned_to_super_worker">Assigned to S.Worker</SelectItem>
+                                    <SelectItem value="assigned_to_worker">Assigned to Worker</SelectItem>
                                     <SelectItem value="in_progress">In Progress</SelectItem>
+                                    <SelectItem value="worker_draft">Worker Draft</SelectItem>
                                     <SelectItem value="requested_changes">Requested Changes</SelectItem>
                                     <SelectItem value="final_payment_approval">Final Payment Approval</SelectItem>
                                     <SelectItem value="word_count_change">Word Count Change</SelectItem>
@@ -460,6 +477,14 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                         <div className="flex flex-wrap gap-3">
                              {hw.status === 'requested_changes' && (
                                 <Button className="w-full sm:w-auto" onClick={handleAcceptChanges}><Check className="mr-2"/> Accept Changes</Button>
+                            )}
+                            {hw.status === 'worker_draft' && hw.draftFiles && hw.draftFiles.length > 0 && (
+                                <Button 
+                                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700" 
+                                    onClick={() => handleStatusChange('final_payment_approval')}
+                                >
+                                    <Check className="mr-2"/> Approve Draft
+                                </Button>
                             )}
                             <Select onValueChange={handleAssignWorker} defaultValue={hw.workerId || ""}>
                                 <SelectTrigger className="w-full sm:w-auto flex-grow">

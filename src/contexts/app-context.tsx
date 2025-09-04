@@ -33,6 +33,7 @@ import {
   updateSuperWorkerFee,
   assignSuperWorkerToHomework,
   fetchSuperWorkersForAssignment,
+  approveDraftFiles,
 } from '@/lib/actions';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -68,6 +69,7 @@ interface AppContextType {
   requestChangesOnHomework: (homeworkId: string, data: HomeworkChangeRequestData) => Promise<void>;
   requestSuperWorkerChanges: (homeworkId: string, data: { newWordCount: number; newDeadline: Date; notes: string; }) => Promise<void>;
   uploadHomeworkFiles: (homeworkId: string, files: { name: string; url: string }[], fileType: 'worker_draft' | 'super_worker_review' | 'final_approved') => Promise<void>;
+  approveDraftFiles: (homeworkId: string) => Promise<void>;
 
   selectedHomework: Homework | null;
   setSelectedHomework: (homework: Homework | null) => void;
@@ -544,6 +546,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
   };
 
+  const approveDraftFilesHandler = async (homeworkId: string) => {
+      if (!user) return;
+      try {
+          await approveDraftFiles(homeworkId, user.id);
+          
+          // Immediate refresh for real-time feeling
+          await Promise.all([
+            getHomeworksForUser(),
+            fetchUserNotifications()
+          ]);
+          
+          toast({ title: "Draft Files Approved", description: "Draft files have been approved and moved to final files." });
+      } catch (error) {
+          console.error(error);
+          toast({ variant: 'destructive', title: "Error", description: "Could not approve draft files." });
+      }
+  };
+
   const submitHomework = async (data: {
         moduleName: string;
         projectNumber: ProjectNumber[];
@@ -609,6 +629,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     requestChangesOnHomework,
     requestSuperWorkerChanges: requestSuperWorkerChangesHandler,
     uploadHomeworkFiles: uploadHomeworkFilesHandler,
+    approveDraftFiles: approveDraftFilesHandler,
     selectedHomework,
     setSelectedHomework,
     isHomeworkModalOpen,

@@ -50,7 +50,8 @@ export default function FileUploadModal({ open, onOpenChange }: FileUploadModalP
         if (!hw) return false;
         
         if (user.role === 'worker' && hw.status === 'in_progress') return true;
-        if (user.role === 'super_worker' && ['final_payment_approval'].includes(hw.status)) return true;
+        if (user.role === 'worker' && hw.status === 'assigned_to_worker') return true;
+        if (user.role === 'super_worker' && ['worker_draft', 'final_payment_approval'].includes(hw.status)) return true;
         if (user.role === 'super_agent' && ['final_payment_approval'].includes(hw.status)) return true;
         
         return false;

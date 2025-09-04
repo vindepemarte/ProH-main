@@ -22,6 +22,9 @@ const statusColors: Record<HomeworkStatus, string> = {
   declined: "bg-red-500/20 text-red-700 border-red-500/30",
   refund: "bg-gray-500/20 text-gray-700 border-gray-500/30",
   completed: "bg-teal-500/20 text-teal-700 border-teal-500/30",
+  assigned_to_super_worker: "bg-cyan-500/20 text-cyan-700 border-cyan-500/30",
+  assigned_to_worker: "bg-violet-500/20 text-violet-700 border-violet-500/30",
+  worker_draft: "bg-amber-500/20 text-amber-700 border-amber-500/30",
 };
 
 export default function HomeworkList() {
@@ -72,20 +75,34 @@ export default function HomeworkList() {
         }
     }, [homeworks, statusFilter, orderSearch, user]);
 
-    // Get available statuses for filter dropdown with defensive checks
+    // Get available statuses for filter dropdown with role-specific filtering
     const availableStatuses = useMemo(() => {
-        if (!homeworks || !Array.isArray(homeworks) || homeworks.length === 0) return [];
+        if (!homeworks || !Array.isArray(homeworks) || homeworks.length === 0 || !user) return [];
         try {
             const validHomeworks = homeworks.filter(hw => hw && typeof hw === 'object' && hw.status);
             if (validHomeworks.length === 0) return [];
             
-            const statuses = [...new Set(validHomeworks.map(hw => hw.status).filter(status => status && typeof status === 'string'))];
+            let statuses = [...new Set(validHomeworks.map(hw => hw.status).filter(status => status && typeof status === 'string'))];
+            
+            // Filter statuses based on user role for better UX
+            if (user.role === 'super_worker') {
+                // Super workers primarily see assignments and drafts
+                statuses = statuses.filter(status => 
+                    ['assigned_to_super_worker', 'assigned_to_worker', 'worker_draft', 'final_payment_approval', 'completed'].includes(status)
+                );
+            } else if (user.role === 'worker') {
+                // Workers see their assignments and drafts
+                statuses = statuses.filter(status => 
+                    ['assigned_to_worker', 'worker_draft', 'final_payment_approval', 'completed'].includes(status)
+                );
+            }
+            
             return Array.isArray(statuses) ? statuses.sort() : [];
         } catch (error) {
             console.error('Error processing available statuses:', error);
             return [];
         }
-    }, [homeworks]);
+    }, [homeworks, user]);
 
     if (!user) return null;
     

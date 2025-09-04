@@ -266,7 +266,10 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
 
         const dbUpdates: { [key: string]: any } = {};
         if (updates.status) dbUpdates.status = updates.status;
-        if (updates.workerId) dbUpdates.worker_id = updates.workerId;
+        if (updates.workerId) {
+            dbUpdates.worker_id = updates.workerId;
+            dbUpdates.status = 'assigned_to_worker';
+        }
         if (updates.price) dbUpdates.price = updates.price;
         if (updates.wordCount) dbUpdates.word_count = updates.wordCount;
         if (updates.deadline) dbUpdates.deadline = updates.deadline;
@@ -295,6 +298,28 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
 
             // Enhanced notification system for all status changes
             switch (updates.status) {
+                case 'assigned_to_super_worker':
+                    // Notify assigned super worker
+                    if (homework.super_worker_id) {
+                        notificationsToSend.push({ userId: homework.super_worker_id, templateId: 'workerAssignment', variables: { homeworkId: homework.id }, homeworkId: id });
+                    }
+                    // Notify super agent
+                    if (superAgentId) {
+                        notificationsToSend.push({ userId: superAgentId, message: messageBase, homeworkId: id });
+                    }
+                    break;
+                    
+                case 'assigned_to_worker':
+                    // Notify assigned worker
+                    if (homework.worker_id) {
+                        notificationsToSend.push({ userId: homework.worker_id, templateId: 'workerAssignment', variables: { homeworkId: homework.id }, homeworkId: id });
+                    }
+                    // Notify super worker about assignment
+                    if (homework.super_worker_id) {
+                        notificationsToSend.push({ userId: homework.super_worker_id, message: messageBase, homeworkId: id });
+                    }
+                    break;
+                    
                 case 'in_progress':
                     // Notify super worker and assigned worker
                     const superWorkerRes = await pool.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
@@ -307,6 +332,17 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
                     // Notify super agent
                     if (superAgentId) {
                         notificationsToSend.push({ userId: superAgentId, templateId: 'homeworkInProgress', variables: { homeworkId: homework.id }, homeworkId: id });
+                    }
+                    break;
+                    
+                case 'worker_draft':
+                    // Notify super worker about worker draft
+                    if (homework.super_worker_id) {
+                        notificationsToSend.push({ userId: homework.super_worker_id, templateId: 'workerDraftUpload', variables: { homeworkId: homework.id }, homeworkId: id });
+                    }
+                    // Notify super agent
+                    if (superAgentId) {
+                        notificationsToSend.push({ userId: superAgentId, templateId: 'workerDraftUpload', variables: { homeworkId: homework.id }, homeworkId: id });
                     }
                     break;
                     
@@ -1124,12 +1160,21 @@ export async function uploadHomeworkFiles(homeworkId: string, files: { name: str
         let newStatus = homework.status;
         let notificationMessage = '';
         
+        if (fileType === 'worker_draft') {
+            newStatus = 'worker_draft';
+            // Update homework status to worker_draft
+            await client.query(
+                'UPDATE homeworks SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                [newStatus, homeworkId]
+            );
+        }
+        
         // Get super agent for all file upload notifications
         const superAgentRes = await client.query("SELECT id FROM users WHERE role = 'super_agent' LIMIT 1");
         const superAgentId = superAgentRes.rows.length > 0 ? superAgentRes.rows[0].id : null;
         
         if (fileType === 'worker_draft') {
-            newStatus = 'final_payment_approval';
+            newStatus = 'worker_draft';
             
             // Notify super worker
             const superWorkerRes = await client.query("SELECT id FROM users WHERE role = 'super_worker' LIMIT 1");
@@ -1152,7 +1197,14 @@ export async function uploadHomeworkFiles(homeworkId: string, files: { name: str
                 });
             }
         } else if (fileType === 'super_worker_review') {
-            // Keep status as final_payment_approval but notify super agent
+            // Set status to final_payment_approval and notify super agent
+            newStatus = 'final_payment_approval';
+            
+            // Update homework status
+            await client.query(
+                'UPDATE homeworks SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+                [newStatus, homeworkId]
+            );
             
             if (superAgentId) {
                 notificationsToSend.push({ 
@@ -1921,10 +1973,10 @@ export async function assignSuperWorkerToHomework(
             profit: profit
         };
         
-        // Update homework with assigned worker and new earnings
+        // Update homework with assigned worker, new earnings, and status
         await client.query(
             `UPDATE homeworks 
-             SET super_worker_id = $1, earnings = $2, updated_at = CURRENT_TIMESTAMP 
+             SET super_worker_id = $1, earnings = $2, status = 'assigned_to_super_worker', updated_at = CURRENT_TIMESTAMP 
              WHERE id = $3`,
             [workerId, JSON.stringify(earnings), homeworkId]
         );
@@ -1972,6 +2024,77 @@ export async function fetchSuperWorkersForAssignment(): Promise<User[]> {
             referenceCode: null,
             referredBy: null
         }));
+    } finally {
+        client.release();
+    }
+}
+
+export async function approveDraftFiles(homeworkId: string, approvedBy: string): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // Get the homework with draft files
+        const homeworkRes = await client.query(
+            'SELECT * FROM homeworks WHERE id = $1',
+            [homeworkId]
+        );
+        
+        if (homeworkRes.rows.length === 0) {
+            throw new Error('Homework not found');
+        }
+        
+        const homework = homeworkRes.rows[0];
+        
+        if (homework.status !== 'worker_draft') {
+            throw new Error('Homework is not in worker_draft status');
+        }
+        
+        if (!homework.draft_files || homework.draft_files.length === 0) {
+            throw new Error('No draft files to approve');
+        }
+        
+        // Move draft files to final files and update status
+        await client.query(
+            'UPDATE homeworks SET final_files = $1, draft_files = $2, status = $3, updated_at = NOW() WHERE id = $4',
+            [homework.draft_files, [], 'final_payment_approval', homeworkId]
+        );
+        
+        // Send notifications
+        const studentRes = await client.query(
+            'SELECT id FROM users WHERE id = $1',
+            [homework.student_id]
+        );
+        
+        if (studentRes.rows.length > 0) {
+            await createNotificationFromTemplate(
+                'superWorkerReviewUpload',
+                { homeworkId },
+                studentRes.rows[0].id,
+                homeworkId
+            );
+        }
+        
+        // Notify super agents
+        const superAgentRes = await client.query(
+            'SELECT id FROM users WHERE role = $1',
+            ['super_agent']
+        );
+        
+        for (const superAgent of superAgentRes.rows) {
+            await createNotificationFromTemplate(
+                'finalPaymentApproval',
+                { homeworkId },
+                superAgent.id,
+                homeworkId
+            );
+        }
+        
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error approving draft files:', error);
+        throw error;
     } finally {
         client.release();
     }

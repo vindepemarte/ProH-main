@@ -24,7 +24,10 @@ export interface ReferenceCode {
 
 export type HomeworkStatus =
   | 'payment_approval'
+  | 'assigned_to_super_worker'
+  | 'assigned_to_worker'
   | 'in_progress'
+  | 'worker_draft'
   | 'requested_changes'
   | 'final_payment_approval'
   | 'word_count_change'
