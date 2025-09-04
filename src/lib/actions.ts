@@ -2142,37 +2142,9 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
             ['final_payment_approval', homeworkId]
         );
         
-        // Send notifications
-        const studentRes = await client.query(
-            'SELECT id FROM users WHERE id = $1',
-            [homework.student_id]
-        );
-        
-        if (studentRes.rows.length > 0) {
-            await createNotificationFromTemplate(
-                'superWorkerReviewUpload',
-                { homeworkId },
-                studentRes.rows[0].id,
-                homeworkId
-            );
-        }
-        
-        // Notify super agents
-        const superAgentRes = await client.query(
-            'SELECT id FROM users WHERE role = $1',
-            ['super_agent']
-        );
-        
-        for (const superAgent of superAgentRes.rows) {
-            await createNotificationFromTemplate(
-                'finalPaymentApproval',
-                { homeworkId },
-                superAgent.id,
-                homeworkId
-            );
-        }
-        
         await client.query('COMMIT');
+        console.log('Transaction committed successfully');
+        
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error approving draft files:', error);
@@ -2180,4 +2152,42 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
     } finally {
         client.release();
     }
+    
+    // Send notifications outside the transaction to avoid connection issues
+    try {
+        console.log('Sending notifications');
+        
+        // Notify student
+        await createNotificationFromTemplate(
+            'superWorkerReviewUpload',
+            { homeworkId },
+            homework.student_id,
+            homeworkId
+        );
+        
+        // Notify super agents
+        const client2 = await pool.connect();
+        try {
+            const superAgentRes = await client2.query(
+                'SELECT id FROM users WHERE role = $1',
+                ['super_agent']
+            );
+            
+            for (const superAgent of superAgentRes.rows) {
+                await createNotificationFromTemplate(
+                    'finalPaymentApproval',
+                    { homeworkId },
+                    superAgent.id,
+                    homeworkId
+                );
+            }
+        } finally {
+            client2.release();
+        }
+        
+        console.log('Notifications sent successfully');
+     } catch (notificationError) {
+         console.error('Failed to send notifications (non-critical):', notificationError);
+         // Don't throw here as the main operation succeeded
+     }
 }
