@@ -58,6 +58,16 @@
   }
 }
 
+/* Beta badge animation */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @layer components {
   /* Custom tab styling for active state */
   .dashboard-tabs [data-state="active"] {
