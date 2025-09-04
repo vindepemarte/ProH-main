@@ -31,11 +31,11 @@ function Calendar({
   const defaultClassNames = getDefaultClassNames();
 
   return (
-    <div className="flex flex-col bg-background rounded-md overflow-hidden w-fit">
+    <div className="flex flex-col bg-background rounded-md overflow-hidden w-full">
       <DayPicker
         showOutsideDays={showOutsideDays}
         className={cn(
-          "bg-background group/calendar [--cell-size:2rem] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent w-fit",
+          "bg-background group/calendar [--cell-size:2rem] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent w-full",
           String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
           String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
           className
@@ -47,7 +47,7 @@ function Calendar({
           ...formatters,
         }}
         classNames={{
-          root: cn("w-fit", defaultClassNames.root),
+          root: cn("w-full", defaultClassNames.root),
           months: cn(
             "relative flex flex-col gap-4 md:flex-row",
             defaultClassNames.months

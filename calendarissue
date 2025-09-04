@@ -1,0 +1,241 @@
+You're using a **custom carousel component** (`embla-carousel-react`) to display a calendar, but the layout is looking off — specifically, you have a **large white empty space on the right side**, and it's not visually professional.
+
+Let’s break this down and fix it:
+
+---
+
+### 🔍 Problem Analysis
+
+From your screenshot and code:
+- You’re using `embla-carousel` as a **horizontal carousel**.
+- The calendar days are displayed in **rows**, each row being a `<CarouselItem>`.
+- But the **carousel container has extra width**, or the items aren't filling the available space properly.
+- This causes **empty white space on the right** because the carousel thinks it needs to scroll horizontally even though all content fits.
+
+This usually happens due to one of these issues:
+1. **Incorrect flexbox sizing** inside the carousel.
+2. **Fixed widths** on elements that don’t adapt.
+3. **Misaligned container sizes** (e.g., parent too wide).
+4. **Embla default behavior**: It may be trying to scroll even when no scrolling is needed.
+
+---
+
+## ✅ Fixes & Recommendations
+
+### ✅ 1. Ensure `CarouselContent` Uses Full Width
+Your `CarouselContent` wraps the slides with `flex`, but if there's padding or margin, it can cause overflow or misalignment.
+
+Update your `CarouselContent` like so:
+
+```tsx
+const CarouselContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => {
+  const { carouselRef, orientation } = useCarousel()
+
+  return (
+    <div ref={carouselRef} className="overflow-hidden">
+      <div
+        ref={ref}
+        className={cn(
+          "flex",
+          orientation === "horizontal" ? "-ml-4" : "-mt-4 flex-col",
+          "w-full", // ← Add this!
+          className
+        )}
+        {...props}
+      />
+    </div>
+  )
+})
+```
+
+> 💡 This ensures the inner flex container takes full width and doesn't shrink.
+
+---
+
+### ✅ 2. Set Explicit Width on Calendar Grid
+
+Make sure the **calendar grid itself** (the actual table-like structure) has a defined width that matches its content.
+
+If you're rendering the calendar manually (like a grid), ensure it uses `w-full` and proper flex/grid layout.
+
+Example:
+```tsx
+<div className="grid grid-cols-7 gap-1 w-full">
+  {/* Days of week */}
+  <div className="text-center text-sm font-medium">Su</div>
+  <div className="text-center text-sm font-medium">Mo</div>
+  {/* ... */}
+  
+  {/* Dates */}
+  {days.map((day) => (
+    <div
+      key={day}
+      className="aspect-square border rounded-md flex items-center justify-center text-sm"
+    >
+      {day}
+    </div>
+  ))}
+</div>
+```
+
+> 🛠️ Use `w-full` and `grid-cols-7` to make it responsive and avoid horizontal overflow.
+
+---
+
+### ✅ 3. Fix Embla Carousel Settings – Prevent Unnecessary Scrolling
+
+Even if content fits, Embla might still think it needs to scroll due to **default settings**.
+
+Add this option to prevent unnecessary horizontal scroll:
+
+```tsx
+<Carousel opts={{ containScroll: 'keepSnaps' }} />
+```
+
+Or better yet, disable auto-scrolling when not needed:
+
+```tsx
+<Carousel
+  opts={{
+    dragFree: false,
+    loop: false,
+    containScroll: 'keepSnaps',
+    align: 'start', // Ensures alignment stays consistent
+  }}
+>
+  {/* Your content */}
+</Carousel>
+```
+
+> ⚠️ Avoid setting `loop: true` unless you really need infinite scrolling.
+
+---
+
+### ✅ 4. Remove Extra Padding/Margins from Buttons/Container
+
+The **white space** could come from buttons or containers having fixed positions or margins.
+
+Check your `CarouselPrevious` and `CarouselNext` positioning.
+
+They are currently positioned absolutely:
+
+```tsx
+className={cn(
+  "absolute h-8 w-8 rounded-full",
+  orientation === "horizontal"
+    ? "-left-12 top-1/2 -translate-y-1/2"
+    : "-top-12 left-1/2 -translate-x-1/2 rotate-90",
+  className
+)}
+```
+
+But `-left-12` means they extend outside the container. That's fine for UX, but **if the parent container has padding or isn't sized correctly**, it can create visual gaps.
+
+✅ Solution: Make sure the **parent container** (your modal or popup) has no excess padding or margins.
+
+Also, consider using `inset` instead of absolute positioning if possible.
+
+---
+
+### ✅ 5. Don’t Use Carousel Unless Needed
+
+💡 **Is a carousel really necessary here?**
+
+A calendar is typically **not meant to be scrolled horizontally**. Users expect:
+- Month navigation via arrows (which you already have)
+- A static view of the month
+
+👉 So **you should probably NOT use `embla-carousel` at all** for a monthly calendar.
+
+Instead, just render the calendar as a **static grid**, and use simple buttons to change months.
+
+Only use a carousel if:
+- You're showing multiple months side-by-side
+- And want smooth transitions between them
+
+Otherwise, it's overkill and creates layout issues.
+
+---
+
+## ✅ Recommended Alternative: Static Calendar Without Carousel
+
+Here’s how to build a clean, professional calendar without carousel:
+
+```tsx
+<div className="bg-white rounded-lg shadow p-4 max-w-xs mx-auto">
+  <div className="flex items-center justify-between mb-4">
+    <button onClick={() => prevMonth()} className="p-1">
+      <ArrowLeft size={16} />
+    </button>
+    <h2 className="font-semibold text-lg">August 2025</h2>
+    <button onClick={() => nextMonth()} className="p-1">
+      <ArrowRight size={16} />
+    </button>
+  </div>
+
+  <div className="grid grid-cols-7 gap-1 text-center text-sm font-medium mb-2">
+    Su Mo Tu We Th Fr Sa
+  </div>
+
+  <div className="grid grid-cols-7 gap-1">
+    {Array.from({ length: 35 }, (_, i) => {
+      const date = new Date(2025, 7, i + 1); // August starts at index 7
+      const day = date.getDate();
+      const isCurrentMonth = date.getMonth() === 7;
+      const isSelected = /* your logic */;
+      const isToday = /* today check */;
+
+      return (
+        <button
+          key={i}
+          className={cn(
+            "aspect-square border rounded-md flex items-center justify-center text-sm transition-colors",
+            isCurrentMonth ? "bg-gray-100" : "opacity-50",
+            isSelected && "bg-red-500 text-white",
+            isToday && "ring-2 ring-blue-500"
+          )}
+        >
+          {day}
+        </button>
+      );
+    })}
+  </div>
+
+  <button className="mt-4 w-full bg-red-500 text-white py-2 rounded-lg">
+    Done
+  </button>
+</div>
+```
+
+> This avoids all carousel complexity and gives a clean, professional look.
+
+---
+
+## ✅ Summary: What You Should Do
+
+| Issue | Fix |
+|------|-----|
+| White space on right | Use `w-full` on containers, remove excessive padding |
+| Carousel forces scroll | Use `containScroll: 'keepSnaps'`, or avoid carousel |
+| Layout looks unprofessional | Replace carousel with static grid |
+| Absolute buttons causing overflow | Adjust positioning or use relative layout |
+
+---
+
+## ✅ Final Advice
+
+> ❌ **Don’t use `embla-carousel` for a standard calendar** unless you're doing a multi-month slider.
+
+✅ Use **simple grids and button navigation** instead.
+
+If you must use the carousel (e.g., for multiple months), then:
+- Set `opts={{ containScroll: 'keepSnaps' }}`
+- Ensure all child elements have `w-full`
+- Avoid hardcoded widths
+
+---
+
+Let me know if you want help converting your current calendar into a non-carousel version!
