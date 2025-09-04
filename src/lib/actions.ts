@@ -2082,7 +2082,7 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
     try {
         await client.query('BEGIN');
         
-        // Get the homework with draft files
+        // Get the homework
         const homeworkRes = await client.query(
             'SELECT * FROM homeworks WHERE id = $1',
             [homeworkId]
@@ -2098,14 +2098,34 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
             throw new Error('Homework is not in worker_draft status');
         }
         
-        if (!homework.draft_files || homework.draft_files.length === 0) {
+        // Check if there are draft files to approve
+        const draftFilesRes = await client.query(
+            'SELECT * FROM homework_files WHERE homework_id = $1 AND file_type = $2',
+            [homeworkId, 'worker_draft']
+        );
+        
+        if (draftFilesRes.rows.length === 0) {
             throw new Error('No draft files to approve');
         }
         
-        // Move draft files to final files and update status
+        // Check if super worker uploaded any final files
+        const finalFilesRes = await client.query(
+            'SELECT * FROM homework_files WHERE homework_id = $1 AND file_type = $2',
+            [homeworkId, 'super_worker_review']
+        );
+        
+        // If no super worker review files exist, convert draft files to final approved files
+        if (finalFilesRes.rows.length === 0) {
+            await client.query(
+                'UPDATE homework_files SET file_type = $1, updated_at = NOW() WHERE homework_id = $2 AND file_type = $3',
+                ['final_approved', homeworkId, 'worker_draft']
+            );
+        }
+        
+        // Update homework status
         await client.query(
-            'UPDATE homeworks SET final_files = $1, draft_files = $2, status = $3, updated_at = NOW() WHERE id = $4',
-            [homework.draft_files, [], 'final_payment_approval', homeworkId]
+            'UPDATE homeworks SET status = $1, updated_at = NOW() WHERE id = $2',
+            ['final_payment_approval', homeworkId]
         );
         
         // Send notifications

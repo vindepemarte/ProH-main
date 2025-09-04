@@ -306,7 +306,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                             )}
 
                             {/* Final Files (Previously Super Worker Reviewed Files) */}
-                            {(['student', 'agent', 'super_worker', 'super_agent'].includes(user.role) && (hw.reviewedFiles && hw.reviewedFiles.length > 0 || user.role === 'super_worker')) && (
+                            {(['student', 'agent', 'super_worker', 'super_agent'].includes(user.role) && ((hw.reviewedFiles && hw.reviewedFiles.length > 0) || (hw.finalFiles && hw.finalFiles.length > 0) || user.role === 'super_worker')) && (
                                 <div>
                                     <div className="flex justify-between items-center mb-2">
                                         <h4 className="text-sm font-medium text-muted-foreground">Final Files</h4>
@@ -326,11 +326,12 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                             </Button>
                                         )}
                                     </div>
-                                    {hw.reviewedFiles && hw.reviewedFiles.length > 0 ? (
+                                    {((hw.reviewedFiles && hw.reviewedFiles.length > 0) || (hw.finalFiles && hw.finalFiles.length > 0)) ? (
                                         <div className="flex flex-col gap-2">
-                                            {hw.reviewedFiles.map((file, i) => (
+                                            {/* Show super worker review files first */}
+                                            {hw.reviewedFiles && hw.reviewedFiles.map((file, i) => (
                                                 <Button 
-                                                    key={i} 
+                                                    key={`reviewed-${i}`} 
                                                     variant="outline" 
                                                     className="justify-start gap-2 relative hover:bg-accent/50 cursor-pointer" 
                                                     onClick={() => handleFileDownload(file)}
@@ -345,6 +346,29 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                                         )}
                                                         <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
                                                             Final
+                                                        </span>
+                                                        <FileDown className="w-3 h-3 opacity-60" />
+                                                    </div>
+                                                </Button>
+                                            ))}
+                                            {/* Show final approved files (approved drafts) if no reviewed files */}
+                                            {(!hw.reviewedFiles || hw.reviewedFiles.length === 0) && hw.finalFiles && hw.finalFiles.map((file, i) => (
+                                                <Button 
+                                                    key={`final-${i}`} 
+                                                    variant="outline" 
+                                                    className="justify-start gap-2 relative hover:bg-accent/50 cursor-pointer" 
+                                                    onClick={() => handleFileDownload(file)}
+                                                >
+                                                    <Paperclip className="w-4 h-4"/> 
+                                                    <span className="flex-1 text-left">{file.name}</span>
+                                                    <div className="flex items-center gap-2 ml-auto">
+                                                        {file.uploaded_at && (
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {new Date(file.uploaded_at).toLocaleDateString()}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
+                                                            Approved
                                                         </span>
                                                         <FileDown className="w-3 h-3 opacity-60" />
                                                     </div>
