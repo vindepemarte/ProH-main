@@ -157,17 +157,17 @@ export default function NewHomeworkStepperModal({ open, onOpenChange }: NewHomew
     }
   };
 
-  const handleClose = () => {
-    if (form.formState.isDirty) {
-      setIsCloseConfirmOpen(true);
-    } else {
-      onOpenChange(false);
-    }
-  }
+
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleClose}>
+      <Dialog open={open} onOpenChange={(open) => {
+        if (!open && form.formState.isDirty) {
+          setIsCloseConfirmOpen(true);
+        } else if (!open) {
+          onOpenChange(false);
+        }
+      }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle>Request New Homework</DialogTitle>
