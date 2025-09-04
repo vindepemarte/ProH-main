@@ -17,6 +17,7 @@ import SuperWorkerChangeModal from "./modals/super-worker-change-modal";
 import FileUploadModal from "./modals/file-upload-modal";
 import Confetti from 'react-confetti';
 import { useEffect } from 'react';
+import { BetaBadge } from "@/components/ui/beta-badge";
 
 export default function Dashboard() {
     const { user, isHomeworkModalOpen, setIsHomeworkModalOpen, isNewHomeworkModalOpen, setIsNewHomeworkModalOpen, unreadNotificationCount, handleMarkNotificationsAsRead, isRequestChangesModalOpen, setIsRequestChangesModalOpen, isSuperWorkerChangeModalOpen, setIsSuperWorkerChangeModalOpen, isFileUploadModalOpen, setIsFileUploadModalOpen, showConfetti, setShowConfetti } = useAppContext();
@@ -42,13 +43,16 @@ export default function Dashboard() {
         <div className="min-h-screen bg-gradient-to-br from-background to-muted/20 pb-20 sm:pb-16">
             <header className="p-4 border-b bg-background/95 backdrop-blur-sm shadow-sm">
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-                    <div className="text-center sm:text-left">
-                        <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                            Welcome, {user.name}
-                        </h1>
-                        <p className="text-muted-foreground capitalize text-sm sm:text-base">
-                            {user.role.replace(/_/g, ' ')} Dashboard
-                        </p>
+                    <div className="text-center sm:text-left flex flex-col sm:flex-row items-center gap-2">
+                        <div>
+                            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                                Welcome, {user.name}
+                            </h1>
+                            <p className="text-muted-foreground capitalize text-sm sm:text-base">
+                                {user.role.replace(/_/g, ' ')} Dashboard
+                            </p>
+                        </div>
+                        <BetaBadge className="mt-1 sm:mt-0" />
                     </div>
                     {user.role === 'student' && (
                         <Button 
