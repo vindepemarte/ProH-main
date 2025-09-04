@@ -502,14 +502,6 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                              {hw.status === 'requested_changes' && (
                                 <Button className="w-full sm:w-auto" onClick={handleAcceptChanges}><Check className="mr-2"/> Accept Changes</Button>
                             )}
-                            {hw.status === 'worker_draft' && hw.draftFiles && hw.draftFiles.length > 0 && (
-                                <Button 
-                                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700" 
-                                    onClick={() => handleStatusChange('final_payment_approval')}
-                                >
-                                    <Check className="mr-2"/> Approve Draft
-                                </Button>
-                            )}
                             <Select onValueChange={handleAssignWorker} defaultValue={hw.workerId || ""}>
                                 <SelectTrigger className="w-full sm:w-auto flex-grow">
                                     <SelectValue placeholder="Assign to worker..." />
