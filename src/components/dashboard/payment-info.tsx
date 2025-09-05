@@ -10,7 +10,7 @@ import { useState } from "react";
 export default function PaymentInfo() {
     const { user, toast } = useAppContext();
     const [copiedField, setCopiedField] = useState<string | null>(null);
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(true);
 
     // Mock bank details - in a real app, this would come from the super agent's profile
     const bankDetails = {
