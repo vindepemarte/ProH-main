@@ -14,12 +14,10 @@ export default function PaymentInfo() {
 
     // Mock bank details - in a real app, this would come from the super agent's profile
     const bankDetails = {
-        accountName: "ProH Academic Services Ltd",
-        accountNumber: "12345678",
-        sortCode: "12-34-56",
-        bankName: "Lloyds Bank",
-        iban: "GB29 NWBK 1234 5678 9012 34",
-        bic: "NWBKGB2L"
+        accountName: "RichReach Education LTD",
+        accountNumber: "21433219",
+        sortCode: "23-01-20",
+        bankName: "Revolut"
     };
 
     const copyToClipboard = async (text: string, fieldName: string) => {
@@ -142,35 +140,7 @@ export default function PaymentInfo() {
                                 </Button>
                             </div>
                             
-                            <div className="flex justify-between items-center p-2 bg-white rounded border">
-                                <div>
-                                    <p className="text-xs text-muted-foreground">IBAN</p>
-                                    <p className="font-medium font-mono text-sm">{bankDetails.iban}</p>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => copyToClipboard(bankDetails.iban, "IBAN")}
-                                    className="h-8 w-8 p-0"
-                                >
-                                    <Copy className={`h-3 w-3 ${copiedField === "IBAN" ? "text-green-600" : "text-gray-500"}`} />
-                                </Button>
-                            </div>
-                            
-                            <div className="flex justify-between items-center p-2 bg-white rounded border">
-                                <div>
-                                    <p className="text-xs text-muted-foreground">BIC/SWIFT</p>
-                                    <p className="font-medium font-mono">{bankDetails.bic}</p>
-                                </div>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => copyToClipboard(bankDetails.bic, "BIC/SWIFT")}
-                                    className="h-8 w-8 p-0"
-                                >
-                                    <Copy className={`h-3 w-3 ${copiedField === "BIC/SWIFT" ? "text-green-600" : "text-gray-500"}`} />
-                                </Button>
-                            </div>
+
                         </div>
                     </div>
                     
