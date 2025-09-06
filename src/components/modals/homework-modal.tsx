@@ -33,7 +33,7 @@ interface HomeworkModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function ChangeRequestHistory({ requests, user, handleFileDownload }: { requests: HomeworkChangeRequest[]; user: any; handleFileDownload: (file: any) => void }) {
+function ChangeRequestHistory({ requests, user, handleFileDownload }: { requests: HomeworkChangeRequest[]; user: any; handleFileDownload: (file: any, fileType?: string) => void }) {
     if (!requests || requests.length === 0) return null;
 
     // Sort requests by creation date (newest first) and add version numbers
@@ -139,9 +139,14 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
         updateHomework(hw.id, { status });
     }
 
-    const handleFileDownload = (file: any) => {
-        // Only allow file downloads for non-student roles
-        if (user.role === 'student') return;
+    const handleFileDownload = (file: any, fileType?: string) => {
+        // Allow students to download final files when homework is completed
+        const isStudentDownloadingFinalFiles = user.role === 'student' && 
+            hw.status === 'completed' && 
+            (fileType === 'final' || fileType === 'reviewed');
+        
+        // Only allow file downloads for non-student roles OR students downloading final files when completed
+        if (user.role === 'student' && !isStudentDownloadingFinalFiles) return;
         
         try {
             const link = document.createElement('a');
@@ -329,7 +334,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                                     key={`reviewed-${i}`} 
                                                     variant="outline" 
                                                     className="justify-start gap-2 relative hover:bg-accent/50 cursor-pointer" 
-                                                    onClick={() => handleFileDownload(file)}
+                                                    onClick={() => handleFileDownload(file, 'reviewed')}
                                                 >
                                                     <Paperclip className="w-4 h-4"/> 
                                                     <span className="flex-1 text-left">{file.name}</span>
@@ -352,7 +357,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                                     key={`final-${i}`} 
                                                     variant="outline" 
                                                     className="justify-start gap-2 relative hover:bg-accent/50 cursor-pointer" 
-                                                    onClick={() => handleFileDownload(file)}
+                                                    onClick={() => handleFileDownload(file, 'final')}
                                                 >
                                                     <Paperclip className="w-4 h-4"/> 
                                                     <span className="flex-1 text-left">{file.name}</span>
@@ -523,7 +528,7 @@ export default function HomeworkModal({ open, onOpenChange }: HomeworkModalProps
                                 <div className="mb-2">
                                     <h4 className="text-sm font-medium mb-2">Download Final Work:</h4>
                                     {hw.reviewedFiles.map((file, i) => (
-                                        <Button key={i} className="w-full gap-2 mb-1" onClick={() => handleFileDownload(file)}>
+                                        <Button key={i} className="w-full gap-2 mb-1" onClick={() => handleFileDownload(file, 'reviewed')}>
                                             <FileDown/> {file.name}
                                         </Button>
                                     ))}
