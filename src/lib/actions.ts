@@ -1600,9 +1600,10 @@ export async function getNotificationTemplates(): Promise<NotificationTemplates>
             if (templateKey) {
                 let variables;
                 try {
-                    variables = JSON.parse(row.variables);
+                    // PostgreSQL JSONB is already parsed when retrieved
+                    variables = Array.isArray(row.variables) ? row.variables : templates[templateKey].variables;
                 } catch (error) {
-                    console.warn(`Failed to parse variables for template ${row.template_id}:`, row.variables);
+                    console.warn(`Failed to process variables for template ${row.template_id}:`, row.variables);
                     // Use default variables from the template
                     variables = templates[templateKey].variables;
                 }
