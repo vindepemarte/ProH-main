@@ -13,6 +13,13 @@ export function getPool(): Pool {
     
     poolInstance = new Pool({
       connectionString,
+      // Optimize connection pool for performance
+      max: 20, // Maximum number of clients in the pool
+      min: 2,  // Minimum number of clients in the pool
+      idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+      connectionTimeoutMillis: 5000, // Return an error after 5 seconds if connection could not be established
+      maxUses: 7500, // Close (and replace) a connection after it has been used 7500 times
+      allowExitOnIdle: true, // Allow the pool to close all connections and exit when all clients are idle
     });
   }
   

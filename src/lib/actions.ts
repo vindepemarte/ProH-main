@@ -1,6 +1,7 @@
 'use server';
 
 import { pool } from './db';
+import { cache, CacheKeys, CacheTTL, invalidateUserCache, invalidateHomeworkCache } from './cache';
 import type { User, Homework, HomeworkStatus, ReferenceCode, ProjectNumber, AnalyticsData, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, StudentsPerAgent, HomeworkChangeRequestData, HomeworkChangeRequest, NotificationTemplates, SuperWorkerFee, SuperWorkerWithFee } from './types';
 import { differenceInDays, format, addDays } from 'date-fns';
 
@@ -175,6 +176,14 @@ export async function createUser(name: string, email: string, pass: string, refC
 
 
 export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
+    // Check cache first
+    const cacheKey = CacheKeys.userHomeworks(user.id, user.role);
+    const cachedHomeworks = cache.get<Homework[]>(cacheKey);
+    
+    if (cachedHomeworks) {
+        return cachedHomeworks;
+    }
+    
     const client = await pool.connect();
     let query = `SELECT h.*, sw.name as assigned_super_worker_name 
                  FROM homeworks h
@@ -210,21 +219,78 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
     try {
         const res = await client.query(query, params);
         
-        const homeworks = await Promise.all(res.rows.map(async (row) => {
-            const filesRes = await client.query('SELECT file_name as name, file_url as url, file_type, is_latest, uploaded_by, uploaded_at FROM homework_files WHERE homework_id = $1 ORDER BY uploaded_at DESC', [row.id]);
-            const changeRequestsRes = await client.query('SELECT * FROM homework_change_requests WHERE homework_id = $1 ORDER BY created_at DESC', [row.id]);
-            
-            const changeRequests = await Promise.all(changeRequestsRes.rows.map(async (cr) => {
-                const crFilesRes = await client.query('SELECT file_name as name, file_url as url FROM change_request_files WHERE change_request_id = $1', [cr.id]);
-                return { ...cr, files: crFilesRes.rows };
+        if (res.rows.length === 0) {
+            return [];
+        }
+        
+        // Extract homework IDs for bulk queries
+        const homeworkIds = res.rows.map(row => row.id);
+        
+        // Bulk fetch all files for all homeworks in one query
+        const filesRes = await client.query(
+            `SELECT homework_id, file_name as name, file_url as url, file_type, is_latest, uploaded_by, uploaded_at 
+             FROM homework_files 
+             WHERE homework_id = ANY($1) 
+             ORDER BY homework_id, uploaded_at DESC`,
+            [homeworkIds]
+        );
+        
+        // Bulk fetch all change requests for all homeworks in one query
+        const changeRequestsRes = await client.query(
+            `SELECT * FROM homework_change_requests 
+             WHERE homework_id = ANY($1) 
+             ORDER BY homework_id, created_at DESC`,
+            [homeworkIds]
+        );
+        
+        // Extract change request IDs for bulk file fetch
+        const changeRequestIds = changeRequestsRes.rows.map(cr => cr.id);
+        
+        // Bulk fetch all change request files in one query
+        let changeRequestFilesRes = { rows: [] };
+        if (changeRequestIds.length > 0) {
+            changeRequestFilesRes = await client.query(
+                `SELECT change_request_id, file_name as name, file_url as url 
+                 FROM change_request_files 
+                 WHERE change_request_id = ANY($1)`,
+                [changeRequestIds]
+            );
+        }
+        
+        // Group files by homework_id
+        const filesByHomework = filesRes.rows.reduce((acc, file) => {
+            if (!acc[file.homework_id]) acc[file.homework_id] = [];
+            acc[file.homework_id].push(file);
+            return acc;
+        }, {} as Record<string, any[]>);
+        
+        // Group change requests by homework_id
+        const changeRequestsByHomework = changeRequestsRes.rows.reduce((acc, cr) => {
+            if (!acc[cr.homework_id]) acc[cr.homework_id] = [];
+            acc[cr.homework_id].push(cr);
+            return acc;
+        }, {} as Record<string, any[]>);
+        
+        // Group change request files by change_request_id
+        const filesByChangeRequest = changeRequestFilesRes.rows.reduce((acc: Record<string, any[]>, file: any) => {
+            if (!acc[file.change_request_id]) acc[file.change_request_id] = [];
+            acc[file.change_request_id].push(file);
+            return acc;
+        }, {} as Record<string, any[]>);
+        
+        // Build final homework objects
+        const homeworks = res.rows.map(row => {
+            const allFiles = filesByHomework[row.id] || [];
+            const changeRequests = (changeRequestsByHomework[row.id] || []).map((cr: any) => ({
+                ...cr,
+                files: filesByChangeRequest[cr.id] || []
             }));
-
+            
             // Separate files by type
-            const allFiles = filesRes.rows;
-            const originalFiles = allFiles.filter(f => f.file_type === 'student_original');
-            const draftFiles = allFiles.filter(f => f.file_type === 'worker_draft' && f.is_latest);
-            const reviewedFiles = allFiles.filter(f => f.file_type === 'super_worker_review' && f.is_latest);
-            const finalFiles = allFiles.filter(f => f.file_type === 'final_approved' && f.is_latest);
+            const originalFiles = allFiles.filter((f: any) => f.file_type === 'student_original');
+            const draftFiles = allFiles.filter((f: any) => f.file_type === 'worker_draft' && f.is_latest);
+            const reviewedFiles = allFiles.filter((f: any) => f.file_type === 'super_worker_review' && f.is_latest);
+            const finalFiles = allFiles.filter((f: any) => f.file_type === 'final_approved' && f.is_latest);
 
             return {
                 ...row,
@@ -244,8 +310,11 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
                 earnings: row.earnings,
                 changeRequests: changeRequests,
             };
-        }));
+        });
 
+        // Cache the results for better performance
+        cache.set(cacheKey, homeworks, CacheTTL.MEDIUM);
+        
         return homeworks;
     } finally {
         client.release();
@@ -413,6 +482,9 @@ export async function modifyHomework(id: string, updates: Partial<Homework>): Pr
         }
         
         await client.query('COMMIT');
+        
+        // Invalidate homework cache for affected users
+        invalidateHomeworkCache();
 
     } catch (error) {
         await client.query('ROLLBACK');
@@ -807,6 +879,9 @@ export async function createHomework(
         message = `Your homework has been submitted successfully. The total price is £${finalPrice.toFixed(2)}. Please use the homework ID #${homeworkId} as the reference for your payment.`;
         
         await client.query('COMMIT');
+        
+        // Invalidate homework cache since new homework was created
+        invalidateHomeworkCache();
 
     } catch(e) {
         await client.query('ROLLBACK');
