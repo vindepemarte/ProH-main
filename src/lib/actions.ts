@@ -1,4 +1,3 @@
-
 'use server';
 
 import { pool } from './db';
@@ -186,7 +185,7 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
         case 'super_agent':
             break;
         case 'agent':
-            query += ' JOIN users s ON h.student_id = s.id WHERE s.referred_by = $1';
+            query += ' WHERE h.agent_id = $1';
             params.push(user.id);
             break;
         case 'student':
@@ -740,13 +739,18 @@ export async function createHomework(
         const pricingConfig = await getPricingConfig();
         const studentDetails = (await client.query('SELECT * FROM users WHERE id = $1', [student.id])).rows[0];
         
-        // Only calculate agent pay if student was referred by an actual agent (not super_agent)
+        // Calculate agent pay and set agent_id for homework visibility
         let agent = null;
+        let agentIdForHomework = null;
         if (studentDetails.referred_by) {
             const referrer = (await client.query('SELECT * FROM users WHERE id = $1', [studentDetails.referred_by])).rows[0];
-            // Only treat as agent if referrer's role is actually 'agent'
-            if (referrer && referrer.role === 'agent') {
-                agent = referrer;
+            // Set agent_id for homework visibility (both agent and super_agent)
+            if (referrer && (referrer.role === 'agent' || referrer.role === 'super_agent')) {
+                agentIdForHomework = referrer.id;
+                // Only calculate agent pay for actual agents (not super_agents)
+                if (referrer.role === 'agent') {
+                    agent = referrer;
+                }
             }
         }
         
@@ -775,7 +779,7 @@ export async function createHomework(
             `INSERT INTO homeworks 
             (id, student_id, agent_id, super_worker_id, status, module_name, project_number, word_count, deadline, notes, price, earnings, created_at, updated_at) 
             VALUES ($1, $2, $3, $4, 'payment_approval', $5, $6, $7, $8, $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING *`,
-            [homeworkId, student.id, agent?.id, data.assignedSuperWorkerId || null, data.moduleName, data.projectNumber, data.wordCount, data.deadline, data.notes, finalPrice, JSON.stringify(earnings)]
+            [homeworkId, student.id, agentIdForHomework, data.assignedSuperWorkerId || null, data.moduleName, data.projectNumber, data.wordCount, data.deadline, data.notes, finalPrice, JSON.stringify(earnings)]
         );
 
         if (data.files && data.files.length > 0) {
