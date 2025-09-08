@@ -1,5 +1,5 @@
-
 "use client"
+import React from "react";
 import { useAppContext } from "@/contexts/app-context";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,47 +9,71 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { HomeworkStatus } from "@/lib/types";
+import { statusColors } from "@/lib/status-colors";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Search, Filter } from "lucide-react";
 import PaymentInfo from "./payment-info";
 import PriceIncreaseRequests from './price-increase-requests';
 
-const statusColors: Record<HomeworkStatus, string> = {
-  payment_approval: "bg-yellow-500/20 text-yellow-700 border-yellow-500/30",
-  in_progress: "bg-blue-500/20 text-blue-700 border-blue-500/30",
-  requested_changes: "bg-orange-500/20 text-orange-700 border-orange-500/30",
-  final_payment_approval: "bg-green-500/20 text-green-700 border-green-500/30",
-  word_count_change: "bg-purple-500/20 text-purple-700 border-purple-500/30",
-  deadline_change: "bg-indigo-500/20 text-indigo-700 border-indigo-500/30",
-  declined: "bg-red-500/20 text-red-700 border-red-500/30",
-  refund: "bg-gray-500/20 text-gray-700 border-gray-500/30",
-  completed: "bg-teal-500/20 text-teal-700 border-teal-500/30",
-  assigned_to_super_worker: "bg-cyan-500/20 text-cyan-700 border-cyan-500/30",
-  assigned_to_worker: "bg-violet-500/20 text-violet-700 border-violet-500/30",
-  worker_draft: "bg-amber-500/20 text-amber-700 border-amber-500/30",
-};
-
-export default function HomeworkList() {
+const HomeworkList = React.memo(function HomeworkList() {
     const { user, homeworks, getHomeworksForUser, setSelectedHomework, setIsHomeworkModalOpen } = useAppContext();
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [orderSearch, setOrderSearch] = useState("");
-    const hasLoadedRef = useRef(false);
-    const isLoadingRef = useRef(false);
+    const [isLoading, setIsLoading] = useState(false);
 
-    // Safe status filter change handler that prevents cascading updates
+    const hasLoadedRef = useRef(false);
+    const lastFetchTimeRef = useRef(0);
+    const FETCH_COOLDOWN = 60000; // Increased to 60 seconds cooldown between fetches
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const PAGE_SIZE = 50; // Increased from 15 to show more homeworks
+
+    // Memoized status filter change handler
     const handleStatusFilterChange = useCallback((value: string) => {
         setStatusFilter(value);
-    }, []); // Remove statusFilter from dependencies to prevent circular updates
+    }, []);
 
-    useEffect(() => {
-        if (user && !hasLoadedRef.current && !isLoadingRef.current) {
-            isLoadingRef.current = true;
-            hasLoadedRef.current = true;
-            getHomeworksForUser().finally(() => {
-                isLoadingRef.current = false;
-            });
+    // Optimized data fetching with cooldown, deduplication, and abort control
+    const fetchHomeworksWithCooldown = useCallback(async (force: boolean = false) => {
+        const now = Date.now();
+        if (!force && now - lastFetchTimeRef.current < FETCH_COOLDOWN) {
+            return; // Skip if within cooldown period
         }
-    }, [user]); // Only depend on user, not getHomeworksForUser
+        
+        if (isLoading || !user) return;
+        
+        // Cancel any ongoing request
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        
+        abortControllerRef.current = new AbortController();
+        setIsLoading(true);
+        lastFetchTimeRef.current = now;
+        
+        try {
+            await getHomeworksForUser();
+            hasLoadedRef.current = true;
+        } catch (error) {
+            if (error instanceof Error && error.name !== 'AbortError') {
+                console.error('Failed to fetch homeworks:', error);
+            }
+        } finally {
+            setIsLoading(false);
+            abortControllerRef.current = null;
+        }
+    }, [user, getHomeworksForUser, isLoading]);
+
+    // Initial load effect
+    useEffect(() => {
+        if (user && !hasLoadedRef.current) {
+            fetchHomeworksWithCooldown();
+        }
+    }, [user, fetchHomeworksWithCooldown]);
+
+    // Refresh handler
+    const handleRefresh = useCallback(() => {
+        fetchHomeworksWithCooldown(true);
+    }, [fetchHomeworksWithCooldown]);
 
     // Filter homeworks based on user role and filters with defensive checks
     const filteredHomeworks = useMemo(() => {
@@ -132,6 +156,15 @@ export default function HomeworkList() {
         }
     }
 
+    // Loading state display
+    if (isLoading && !homeworks?.length) {
+        return (
+            <div className="flex items-center justify-center h-64">
+                <p className="text-muted-foreground">Loading homework assignments...</p>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-4">
             {/* Payment Information for Students */}
@@ -175,6 +208,16 @@ export default function HomeworkList() {
                 <div className="text-sm text-muted-foreground self-center">
                     {filteredHomeworks.length} of {homeworks?.length || 0} homework{(homeworks?.length || 0) !== 1 ? 's' : ''}
                 </div>
+                
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleRefresh}
+                    disabled={isLoading}
+                    className="flex items-center gap-1"
+                >
+                    {isLoading ? 'Loading...' : 'Refresh'}
+                </Button>
             </div>
 
             {/* Homework Grid */}
@@ -196,7 +239,7 @@ export default function HomeworkList() {
                             <CardHeader>
                                 <div className="flex justify-between items-start">
                                     <CardTitle className="text-lg">#{hw.id}</CardTitle>
-                                    <Badge variant="outline" className={cn("capitalize", statusColors[hw.status])}>
+                                    <Badge variant="outline" className={cn("capitalize", statusColors[hw.status as HomeworkStatus])}>
                                         {hw.status.replace(/_/g, ' ')}
                                     </Badge>
                                 </div>
@@ -237,4 +280,6 @@ export default function HomeworkList() {
             </ScrollArea>
         </div>
     );
-}
+});
+
+export default HomeworkList;
