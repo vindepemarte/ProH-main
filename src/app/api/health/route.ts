@@ -8,7 +8,9 @@ export async function GET() {
   try {
     // Simple health check without database connection during build
     // Only test database if URL is provided at runtime
-    if (!process.env.POSTGRES_URL) {
+    const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+    
+    if (!connectionString) {
       return NextResponse.json({ 
         status: 'ok',
         timestamp: new Date().toISOString(),
@@ -23,7 +25,7 @@ export async function GET() {
     // Test database connection only if URL is available
     try {
       const { Pool } = require('pg');
-      const pool = new Pool({ connectionString: process.env.POSTGRES_URL });
+      const pool = new Pool({ connectionString });
       const client = await pool.connect();
       await client.query('SELECT 1');
       client.release();
