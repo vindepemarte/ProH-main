@@ -6,26 +6,19 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    // Simple health check without database connection during build
-    // Only test database if URL is provided at runtime
-    const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-    
-    if (!connectionString) {
-      return NextResponse.json({ 
-        status: 'ok',
-        timestamp: new Date().toISOString(),
-        services: {
-          database: 'not_configured',
-          server: 'running'
-        },
-        message: 'Server is running (database not configured)'
-      }, { status: 200 });
+    // Check database connection
+    if (!process.env.POSTGRES_URL) {
+      return NextResponse.json(
+        { status: 'error', message: 'Database connection string not configured' },
+        { status: 500 }
+      );
     }
 
-    // Test database connection only if URL is available
     try {
       const { Pool } = require('pg');
-      const pool = new Pool({ connectionString });
+      const pool = new Pool({
+        connectionString: process.env.POSTGRES_URL,
+      });
       const client = await pool.connect();
       await client.query('SELECT 1');
       client.release();
