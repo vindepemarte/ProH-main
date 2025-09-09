@@ -78,8 +78,8 @@ export const CacheKeys = {
 
 // Cache TTL constants (in milliseconds)
 export const CacheTTL = {
-  SHORT: 2 * 60 * 1000,      // 2 minutes - for frequently changing data
-  MEDIUM: 5 * 60 * 1000,     // 5 minutes - for moderately changing data
+  SHORT: 30 * 1000,          // 30 seconds - for frequently changing data like homeworks
+  MEDIUM: 2 * 60 * 1000,     // 2 minutes - for moderately changing data
   LONG: 15 * 60 * 1000,      // 15 minutes - for rarely changing data
   VERY_LONG: 60 * 60 * 1000, // 1 hour - for static configuration data
 } as const;

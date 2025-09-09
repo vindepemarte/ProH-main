@@ -176,15 +176,19 @@ export async function createUser(name: string, email: string, pass: string, refC
 
 
 export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
+    const startTime = Date.now();
+    
     // Check cache first
     const cacheKey = CacheKeys.userHomeworks(user.id, user.role);
     const cachedHomeworks = cache.get<Homework[]>(cacheKey);
     
     if (cachedHomeworks) {
+        console.log(`[PERF] Homework fetch from cache: ${Date.now() - startTime}ms`);
         return cachedHomeworks;
     }
     
     const client = await pool.connect();
+    const dbStartTime = Date.now();
     let query = `SELECT h.*, sw.name as assigned_super_worker_name 
                  FROM homeworks h
                  LEFT JOIN users sw ON h.super_worker_id = sw.id`;
@@ -312,8 +316,12 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
             };
         });
 
-        // Cache the results for better performance
-        cache.set(cacheKey, homeworks, CacheTTL.MEDIUM);
+        // Cache the results for better performance (30 seconds for real-time updates)
+        cache.set(cacheKey, homeworks, CacheTTL.SHORT);
+        
+        const totalTime = Date.now() - startTime;
+        const dbTime = Date.now() - dbStartTime;
+        console.log(`[PERF] Homework fetch completed: ${totalTime}ms (DB: ${dbTime}ms, Rows: ${homeworks.length})`);
         
         return homeworks;
     } finally {
