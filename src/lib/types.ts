@@ -73,6 +73,21 @@ export interface SuperWorkerWithFee extends User {
   fee_per_500: number;
 }
 
+export interface AgentFee {
+  agent_id: string;
+  fee_per_500: number;
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+export interface AgentWithFee extends User {
+  fee_per_500: number;
+}
+
+export interface AgentPricingConfig {
+  wordTiers: Record<string, number>;
+}
+
 export interface Homework {
   id: string;
   studentId: string;

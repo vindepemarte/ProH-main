@@ -23,8 +23,9 @@ const HomeworkList = React.memo(function HomeworkList() {
 
     const hasLoadedRef = useRef(false);
     const lastFetchTimeRef = useRef(0);
-    const FETCH_COOLDOWN = 5000; // 5 seconds cooldown for automatic fetches
+    const FETCH_COOLDOWN = 60000; // Increased to 60 seconds cooldown between fetches
     const abortControllerRef = useRef<AbortController | null>(null);
+    const PAGE_SIZE = 50; // Increased from 15 to show more homeworks
 
     // Memoized status filter change handler
     const handleStatusFilterChange = useCallback((value: string) => {
@@ -69,34 +70,10 @@ const HomeworkList = React.memo(function HomeworkList() {
         }
     }, [user, fetchHomeworksWithCooldown]);
 
-    // Refresh handler - always bypass cache and cooldown
-    const handleRefresh = useCallback(async () => {
-        if (isLoading || !user) return;
-        
-        // Cancel any ongoing request
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
-        
-        abortControllerRef.current = new AbortController();
-        setIsLoading(true);
-        
-        try {
-            // Force fresh data by invalidating cache first
-            const { invalidateUserCache } = await import('@/lib/cache');
-            invalidateUserCache(user.id, user.role);
-            
-            await getHomeworksForUser();
-            hasLoadedRef.current = true;
-        } catch (error) {
-            if (error instanceof Error && error.name !== 'AbortError') {
-                console.error('Failed to refresh homeworks:', error);
-            }
-        } finally {
-            setIsLoading(false);
-            abortControllerRef.current = null;
-        }
-    }, [user, getHomeworksForUser, isLoading]);
+    // Refresh handler
+    const handleRefresh = useCallback(() => {
+        fetchHomeworksWithCooldown(true);
+    }, [fetchHomeworksWithCooldown]);
 
     // Filter homeworks based on user role and filters with defensive checks
     const filteredHomeworks = useMemo(() => {

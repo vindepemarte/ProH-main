@@ -22,10 +22,10 @@ Improve the Agent dashboard with analytics, data visualization, and pricing conf
   - [ ] Total Profit
 
 ### Pricing Configuration
-- [ ] Add pricing settings page similar to Super Agent role
-- [ ] Implement word count pricing from 500 to 20000 words
-- [ ] Create UI for configuring pricing tiers
-- [ ] Add validation to ensure prices are within acceptable ranges
+- [x] Add pricing settings page similar to Super Agent role
+- [x] Implement word count pricing from 500 to 20000 words
+- [x] Create UI for configuring pricing tiers
+- [x] Add validation to ensure prices are within acceptable ranges
 
 ## Implementation Strategy
 

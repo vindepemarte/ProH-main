@@ -176,19 +176,15 @@ export async function createUser(name: string, email: string, pass: string, refC
 
 
 export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
-    const startTime = Date.now();
-    
     // Check cache first
     const cacheKey = CacheKeys.userHomeworks(user.id, user.role);
     const cachedHomeworks = cache.get<Homework[]>(cacheKey);
     
     if (cachedHomeworks) {
-        console.log(`[PERF] Homework fetch from cache: ${Date.now() - startTime}ms`);
         return cachedHomeworks;
     }
     
     const client = await pool.connect();
-    const dbStartTime = Date.now();
     let query = `SELECT h.*, sw.name as assigned_super_worker_name 
                  FROM homeworks h
                  LEFT JOIN users sw ON h.super_worker_id = sw.id`;
@@ -316,12 +312,8 @@ export async function fetchHomeworksForUser(user: User): Promise<Homework[]> {
             };
         });
 
-        // Cache the results for better performance (30 seconds for real-time updates)
-        cache.set(cacheKey, homeworks, CacheTTL.SHORT);
-        
-        const totalTime = Date.now() - startTime;
-        const dbTime = Date.now() - dbStartTime;
-        console.log(`[PERF] Homework fetch completed: ${totalTime}ms (DB: ${dbTime}ms, Rows: ${homeworks.length})`);
+        // Cache the results for better performance
+        cache.set(cacheKey, homeworks, CacheTTL.MEDIUM);
         
         return homeworks;
     } finally {
@@ -609,23 +601,38 @@ export async function requestSuperWorkerChanges(homeworkId: string, data: {
         if (homeworkRes.rows.length === 0) throw new Error("Homework not found");
         const homework = homeworkRes.rows[0];
 
-        // Recalculate price with new parameters
-        const newPrice = await getCalculatedPrice(data.newWordCount, data.newDeadline);
-        
-        // Recalculate earnings with new word count
+        // Recalculate price with new parameters using agent pricing if applicable
+        let newPrice: number;
+        let agentFeePer500: number;
         const pricingConfig = await getPricingConfig();
-        const agentFeePer500 = pricingConfig.fees.agent;
-        
-        // Use assigned super worker's fee if available, otherwise fall back to global fee
-        const superWorkerFeePer500 = homework.super_worker_id 
-            ? await getWorkerFee(homework.super_worker_id)
-            : pricingConfig.fees.super_worker;
         
         // Get student to check if they have an agent referrer
         const studentRes = await client.query('SELECT * FROM users WHERE id = $1', [homework.student_id]);
         const student = studentRes.rows[0];
         
         let agent = null;
+        if (student.referred_by) {
+            const referrerRes = await client.query('SELECT * FROM users WHERE id = $1', [student.referred_by]);
+            const referrer = referrerRes.rows[0];
+            if (referrer && referrer.role === 'agent') {
+                agent = referrer;
+            }
+        }
+        
+        if (agent) {
+            // Use agent's custom pricing configuration
+            newPrice = await getCalculatedPriceForAgent(agent.id, data.newWordCount, data.newDeadline);
+            agentFeePer500 = await getAgentFee(agent.id);
+        } else {
+            // Use global pricing
+            newPrice = await getCalculatedPrice(data.newWordCount, data.newDeadline);
+            agentFeePer500 = pricingConfig.fees.agent;
+        }
+        
+        // Use assigned super worker's fee if available, otherwise fall back to global fee
+        const superWorkerFeePer500 = homework.super_worker_id 
+            ? await getWorkerFee(homework.super_worker_id)
+            : pricingConfig.fees.super_worker;
         if (student.referred_by) {
             const referrerRes = await client.query('SELECT * FROM users WHERE id = $1', [student.referred_by]);
             const referrer = referrerRes.rows[0];
@@ -834,9 +841,19 @@ export async function createHomework(
             }
         }
         
-        const finalPrice = await getCalculatedPrice(data.wordCount, data.deadline);
-
-        const agentFeePer500 = pricingConfig.fees.agent;
+        // Calculate price using agent's pricing if student has an agent referrer
+        let finalPrice: number;
+        let agentFeePer500: number;
+        
+        if (agent) {
+            // Use agent's custom pricing configuration
+            finalPrice = await getCalculatedPriceForAgent(agent.id, data.wordCount, data.deadline);
+            agentFeePer500 = await getAgentFee(agent.id);
+        } else {
+            // Use global pricing
+            finalPrice = await getCalculatedPrice(data.wordCount, data.deadline);
+            agentFeePer500 = pricingConfig.fees.agent;
+        }
         
         // Get super worker fee (either from assigned worker or global config)
         const superWorkerFeePer500 = data.assignedSuperWorkerId 
@@ -1883,6 +1900,104 @@ export async function runSuperWorkerFeesMigration(): Promise<{ success: boolean;
 }
 
 // ========================
+// AGENT FEE MANAGEMENT
+// ========================
+
+/**
+ * Run the agent fees migration
+ */
+export async function runAgentFeesMigration(): Promise<{ success: boolean; message: string }> {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // Create the agent_fees table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS agent_fees (
+                agent_id VARCHAR(255) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                fee_per_500 NUMERIC(10,2) NOT NULL DEFAULT 5.00,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        
+        // Populate with default fees for existing agents
+        await client.query(`
+            INSERT INTO agent_fees (agent_id, fee_per_500)
+            SELECT id, 5.00 
+            FROM users 
+            WHERE role = 'agent' 
+            AND id NOT IN (SELECT agent_id FROM agent_fees)
+        `);
+        
+        // Add index for better performance
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_agent_fees_agent_id ON agent_fees(agent_id)
+        `);
+        
+        // Create trigger function
+        await client.query(`
+            CREATE OR REPLACE FUNCTION create_default_agent_fee()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF NEW.role = 'agent' THEN
+                    INSERT INTO agent_fees (agent_id, fee_per_500)
+                    VALUES (NEW.id, 5.00)
+                    ON CONFLICT (agent_id) DO NOTHING;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        // Create the trigger
+        await client.query(`
+            DROP TRIGGER IF EXISTS trigger_create_agent_fee ON users;
+            CREATE TRIGGER trigger_create_agent_fee
+                AFTER INSERT OR UPDATE ON users
+                FOR EACH ROW
+                EXECUTE FUNCTION create_default_agent_fee();
+        `);
+        
+        // Create update timestamp trigger
+        await client.query(`
+            CREATE OR REPLACE FUNCTION update_agent_fee_timestamp()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = CURRENT_TIMESTAMP;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        await client.query(`
+            DROP TRIGGER IF EXISTS trigger_update_agent_fee_timestamp ON agent_fees;
+            CREATE TRIGGER trigger_update_agent_fee_timestamp
+                BEFORE UPDATE ON agent_fees
+                FOR EACH ROW
+                EXECUTE FUNCTION update_agent_fee_timestamp();
+        `);
+        
+        await client.query('COMMIT');
+        
+        return {
+            success: true,
+            message: 'Agent fees migration completed successfully'
+        };
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Agent fees migration failed:', error);
+        return {
+            success: false,
+            message: `Migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        };
+    } finally {
+        client.release();
+    }
+}
+
+// ========================
 // SUPER WORKER FEE MANAGEMENT
 // ========================
 
@@ -2280,4 +2395,300 @@ export async function approveDraftFiles(homeworkId: string, approvedBy: string):
          console.error('Failed to send notifications (non-critical):', notificationError);
          // Don't throw here as the main operation succeeded
      }
+}
+
+// ========================
+// AGENT PRICING SYSTEM
+// ========================
+
+/**
+ * Run migration to create agent pricing and agent fees tables
+ */
+export async function runAgentPricingMigration(): Promise<{ success: boolean; message: string }> {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        
+        // Create the agent_pricing table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS agent_pricing (
+                agent_id VARCHAR(255) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                pricing_config JSONB NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        
+        // Create the agent_fees table (for super agents to set fees for each agent)
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS agent_fees (
+                agent_id VARCHAR(255) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                fee_per_500 NUMERIC(10,2) NOT NULL DEFAULT 5.00,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        
+        // Populate with default pricing for existing agents
+        const defaultPricing = {
+            wordTiers: {
+                "500": 20, "1000": 40, "1500": 60, "2000": 80, "2500": 100, "3000": 120, "3500": 140, "4000": 160, "4500": 180, "5000": 200, "5500": 220, "6000": 240, "6500": 260, "7000": 280, "7500": 300, "8000": 320, "8500": 340, "9000": 360, "9500": 380, "10000": 400, "10500": 420, "11000": 440, "11500": 460, "12000": 480, "12500": 500, "13000": 520, "13500": 540, "14000": 560, "14500": 580, "15000": 600, "15500": 620, "16000": 640, "16500": 660, "17000": 680, "17500": 700, "18000": 720, "18500": 740, "19000": 760, "19500": 780, "20000": 800
+            }
+        };
+        
+        await client.query(`
+            INSERT INTO agent_pricing (agent_id, pricing_config)
+            SELECT id, $1::jsonb 
+            FROM users 
+            WHERE role = 'agent' 
+            AND id NOT IN (SELECT agent_id FROM agent_pricing)
+        `, [JSON.stringify(defaultPricing)]);
+        
+        await client.query(`
+            INSERT INTO agent_fees (agent_id, fee_per_500)
+            SELECT id, 5.00 
+            FROM users 
+            WHERE role = 'agent' 
+            AND id NOT IN (SELECT agent_id FROM agent_fees)
+        `);
+        
+        // Add indexes for better performance
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_agent_pricing_agent_id ON agent_pricing(agent_id)
+        `);
+        
+        await client.query(`
+            CREATE INDEX IF NOT EXISTS idx_agent_fees_agent_id ON agent_fees(agent_id)
+        `);
+        
+        // Create trigger functions for agents
+        await client.query(`
+            CREATE OR REPLACE FUNCTION create_default_agent_pricing()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF NEW.role = 'agent' THEN
+                    INSERT INTO agent_pricing (agent_id, pricing_config)
+                    VALUES (NEW.id, '{"wordTiers": {"500": 20, "1000": 40, "1500": 60, "2000": 80, "2500": 100, "3000": 120, "3500": 140, "4000": 160, "4500": 180, "5000": 200, "5500": 220, "6000": 240, "6500": 260, "7000": 280, "7500": 300, "8000": 320, "8500": 340, "9000": 360, "9500": 380, "10000": 400, "10500": 420, "11000": 440, "11500": 460, "12000": 480, "12500": 500, "13000": 520, "13500": 540, "14000": 560, "14500": 580, "15000": 600, "15500": 620, "16000": 640, "16500": 660, "17000": 680, "17500": 700, "18000": 720, "18500": 740, "19000": 760, "19500": 780, "20000": 800}}'::jsonb)
+                    ON CONFLICT (agent_id) DO NOTHING;
+                    
+                    INSERT INTO agent_fees (agent_id, fee_per_500)
+                    VALUES (NEW.id, 5.00)
+                    ON CONFLICT (agent_id) DO NOTHING;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        // Create the trigger
+        await client.query(`
+            DROP TRIGGER IF EXISTS trigger_create_agent_pricing ON users;
+            CREATE TRIGGER trigger_create_agent_pricing
+                AFTER INSERT OR UPDATE ON users
+                FOR EACH ROW
+                EXECUTE FUNCTION create_default_agent_pricing();
+        `);
+        
+        // Create update timestamp triggers
+        await client.query(`
+            CREATE OR REPLACE FUNCTION update_agent_pricing_timestamp()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = CURRENT_TIMESTAMP;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        await client.query(`
+            DROP TRIGGER IF EXISTS trigger_update_agent_pricing_timestamp ON agent_pricing;
+            CREATE TRIGGER trigger_update_agent_pricing_timestamp
+                BEFORE UPDATE ON agent_pricing
+                FOR EACH ROW
+                EXECUTE FUNCTION update_agent_pricing_timestamp();
+        `);
+        
+        await client.query(`
+            CREATE OR REPLACE FUNCTION update_agent_fee_timestamp()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = CURRENT_TIMESTAMP;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+        
+        await client.query(`
+            DROP TRIGGER IF EXISTS trigger_update_agent_fee_timestamp ON agent_fees;
+            CREATE TRIGGER trigger_update_agent_fee_timestamp
+                BEFORE UPDATE ON agent_fees
+                FOR EACH ROW
+                EXECUTE FUNCTION update_agent_fee_timestamp();
+        `);
+        
+        await client.query('COMMIT');
+        
+        return {
+            success: true,
+            message: 'Agent pricing migration completed successfully'
+        };
+        
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Agent pricing migration failed:', error);
+        return {
+            success: false,
+            message: `Agent pricing migration failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        };
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Get agent pricing configuration
+ */
+export async function getAgentPricingConfig(agentId: string): Promise<{ wordTiers: Record<string, number> }> {
+    const client = await pool.connect();
+    try {
+        const res = await client.query(
+            'SELECT pricing_config FROM agent_pricing WHERE agent_id = $1',
+            [agentId]
+        );
+        
+        if (res.rows.length > 0) {
+            return res.rows[0].pricing_config;
+        }
+        
+        // Return default pricing if not found
+        return {
+            wordTiers: {
+                "500": 20, "1000": 40, "1500": 60, "2000": 80, "2500": 100, "3000": 120, "3500": 140, "4000": 160, "4500": 180, "5000": 200, "5500": 220, "6000": 240, "6500": 260, "7000": 280, "7500": 300, "8000": 320, "8500": 340, "9000": 360, "9500": 380, "10000": 400, "10500": 420, "11000": 440, "11500": 460, "12000": 480, "12500": 500, "13000": 520, "13500": 540, "14000": 560, "14500": 580, "15000": 600, "15500": 620, "16000": 640, "16500": 660, "17000": 680, "17500": 700, "18000": 720, "18500": 740, "19000": 760, "19500": 780, "20000": 800
+            }
+        };
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Save agent pricing configuration
+ */
+export async function saveAgentPricingConfig(agentId: string, config: { wordTiers: Record<string, number> }): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query(
+            `INSERT INTO agent_pricing (agent_id, pricing_config) 
+             VALUES ($1, $2) 
+             ON CONFLICT (agent_id) 
+             DO UPDATE SET pricing_config = $2, updated_at = CURRENT_TIMESTAMP`,
+            [agentId, JSON.stringify(config)]
+        );
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Get agent fee
+ */
+export async function getAgentFee(agentId: string): Promise<number> {
+    const client = await pool.connect();
+    try {
+        const res = await client.query(
+            'SELECT fee_per_500 FROM agent_fees WHERE agent_id = $1',
+            [agentId]
+        );
+        
+        if (res.rows.length > 0) {
+            return parseFloat(res.rows[0].fee_per_500);
+        }
+        
+        // Fallback to global pricing config
+        const pricingConfig = await getPricingConfig();
+        return pricingConfig.fees.agent;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Update agent fee (for super agents)
+ */
+export async function updateAgentFee(agentId: string, fee: number): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query(
+            `INSERT INTO agent_fees (agent_id, fee_per_500) 
+             VALUES ($1, $2) 
+             ON CONFLICT (agent_id) 
+             DO UPDATE SET fee_per_500 = $2, updated_at = CURRENT_TIMESTAMP`,
+            [agentId, fee]
+        );
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Fetch all agents with their fees
+ */
+export async function fetchAgentFees(): Promise<Array<User & { fee_per_500: number }>> {
+    const client = await pool.connect();
+    try {
+        const res = await client.query(`
+            SELECT u.id, u.name, u.email, u.role, 
+                   COALESCE(f.fee_per_500, 5.00) as fee_per_500
+            FROM users u
+            LEFT JOIN agent_fees f ON u.id = f.agent_id
+            WHERE u.role = 'agent'
+            ORDER BY u.name
+        `);
+        
+        return res.rows;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Calculate price using agent's pricing configuration
+ */
+export async function getCalculatedPriceForAgent(agentId: string, wordCount: number, deadline: Date): Promise<number> {
+    const agentPricing = await getAgentPricingConfig(agentId);
+    const globalPricing = await getPricingConfig();
+    
+    // Find the appropriate word tier
+    const wordTiers = agentPricing.wordTiers;
+    const sortedTiers = Object.keys(wordTiers)
+        .map(Number)
+        .sort((a, b) => a - b);
+    
+    let basePrice = 0;
+    for (const tier of sortedTiers) {
+        if (wordCount <= tier) {
+            basePrice = wordTiers[tier.toString()];
+            break;
+        }
+    }
+    
+    // If word count exceeds all tiers, use the highest tier
+    if (basePrice === 0 && sortedTiers.length > 0) {
+        const highestTier = sortedTiers[sortedTiers.length - 1];
+        basePrice = wordTiers[highestTier.toString()];
+    }
+    
+    // Apply deadline multiplier (using global deadline tiers)
+    const daysUntilDeadline = differenceInDays(deadline, new Date());
+    let deadlineMultiplier = 1;
+    
+    if (daysUntilDeadline <= 1) {
+        deadlineMultiplier = 1 + (globalPricing.deadlineTiers[1] || 20) / 100;
+    } else if (daysUntilDeadline <= 3) {
+        deadlineMultiplier = 1 + (globalPricing.deadlineTiers[3] || 10) / 100;
+    } else if (daysUntilDeadline <= 7) {
+        deadlineMultiplier = 1 + (globalPricing.deadlineTiers[7] || 5) / 100;
+    }
+    
+    return Math.round(basePrice * deadlineMultiplier * 100) / 100;
 }

@@ -10,7 +10,7 @@ import { useAppContext } from "@/contexts/app-context";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollArea } from "../ui/scroll-area";
 import type { PricingConfig, UserRole, NotificationTemplates } from "@/lib/types";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "../ui/badge";
 import { AlertCircle, Save, Database, DollarSign, Users, Bell, Code } from "lucide-react";
@@ -484,6 +484,293 @@ function SuperWorkerFeesManagerView() {
     );
 }
 
+function AgentPricingConfigView() {
+    const { user, allUsers, agentPricingConfig, fetchAgentPricingConfig, handleSaveAgentPricingConfig, runAgentPricingMigration } = useAppContext();
+    const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+    const [wordTiers, setWordTiers] = useState<Record<string, number>>({});
+    const [isMigrating, setIsMigrating] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+
+    // Get all agents for the dropdown
+    const agents = allUsers.filter(user => user.role === 'agent');
+
+    useEffect(() => {
+        if (agentPricingConfig) {
+            setWordTiers(agentPricingConfig.wordTiers);
+        }
+    }, [agentPricingConfig]);
+
+    const handleAgentSelect = async (agentId: string) => {
+        setSelectedAgentId(agentId);
+        if (agentId) {
+            setIsLoading(true);
+            try {
+                await fetchAgentPricingConfig(agentId);
+            } finally {
+                setIsLoading(false);
+            }
+        } else {
+            setWordTiers({});
+        }
+    };
+
+    const handleTierChange = (tier: string, value: number) => {
+        setWordTiers(prev => ({ ...prev, [tier]: value }));
+    };
+
+    const handleSave = async () => {
+        if (!selectedAgentId) return;
+        
+        setIsLoading(true);
+        try {
+            await handleSaveAgentPricingConfig(selectedAgentId, { wordTiers });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleMigration = async () => {
+        setIsMigrating(true);
+        try {
+            await runAgentPricingMigration();
+        } finally {
+            setIsMigrating(false);
+        }
+    };
+
+    if (user?.role !== 'super_agent') return null;
+
+    const tiers = ['500', '1000', '1500', '2000', '2500', '3000', '3500', '4000', '4500', '5000', '5500', '6000', '6500', '7000', '7500', '8000', '8500', '9000', '9500', '10000'];
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Agent Pricing Configuration</CardTitle>
+                <CardDescription>
+                    Configure custom pricing tiers for individual agents. These override global pricing for students referred by the selected agent.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-6">
+                    <div className="flex gap-4 items-end">
+                        <div className="flex-1">
+                            <label className="text-sm font-medium mb-2 block">Select Agent</label>
+                            <Select value={selectedAgentId} onValueChange={handleAgentSelect}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Choose an agent to configure pricing" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {agents.map((agent) => (
+                                        <SelectItem key={agent.id} value={agent.id}>
+                                            {agent.name} ({agent.email})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <Button
+                            onClick={handleMigration}
+                            disabled={isMigrating}
+                            variant="outline"
+                        >
+                            {isMigrating ? "Running Migration..." : "Run Agent Pricing Migration"}
+                        </Button>
+                    </div>
+
+                    {selectedAgentId && (
+                        <>
+                            {isLoading ? (
+                                <div className="text-center py-8">
+                                    <p>Loading agent pricing configuration...</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="space-y-4">
+                                        <h3 className="text-lg font-medium">Word Count Tiers (£)</h3>
+                                        <ScrollArea className="h-[400px]">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                {tiers.map((tier) => (
+                                                    <div key={tier} className="space-y-2">
+                                                        <label className="text-sm font-medium">
+                                                            {tier} words
+                                                        </label>
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={wordTiers[tier] || ''}
+                                                            onChange={(e) => handleTierChange(tier, parseFloat(e.target.value) || 0)}
+                                                            placeholder="0.00"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </ScrollArea>
+                                    </div>
+                                    <div className="flex justify-end">
+                                        <Button 
+                                            onClick={handleSave} 
+                                            disabled={isLoading || Object.keys(wordTiers).length === 0}
+                                        >
+                                            {isLoading ? 'Saving...' : 'Save Agent Pricing'}
+                                        </Button>
+                                    </div>
+                                </>
+                            )}
+                        </>
+                    )}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+function AgentFeesManagerView() {
+    const { user, agentFees, fetchAgentFees, handleUpdateAgentFee, toast } = useAppContext();
+    const [editingFees, setEditingFees] = useState<Record<string, string>>({});
+    const [loading, setLoading] = useState(false);
+    const [debugInfo, setDebugInfo] = useState<any>(null);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (user?.role === 'super_agent' && mounted) {
+            fetchAgentFees();
+        }
+    }, [fetchAgentFees, user, mounted]);
+    
+    const runDebugCheck = async () => {
+        try {
+            const response = await fetch('/api/debug/agent-fees');
+            const data = await response.json();
+            setDebugInfo(data);
+            console.log('Debug info:', data);
+        } catch (error) {
+            console.error('Debug check failed:', error);
+        }
+    };
+
+    const handleFeeChange = (agentId: string, fee: string) => {
+        setEditingFees(prev => ({ ...prev, [agentId]: fee }));
+    };
+
+    const handleSaveFee = async (agentId: string) => {
+        const newFee = editingFees[agentId];
+        if (newFee && !isNaN(parseFloat(newFee))) {
+            try {
+                setLoading(true);
+                await handleUpdateAgentFee(agentId, parseFloat(newFee));
+                setEditingFees(prev => ({ ...prev, [agentId]: '' }));
+            } catch (error) {
+                console.error('Error updating fee:', error);
+            } finally {
+                setLoading(false);
+            }
+        } else {
+            toast({ variant: 'destructive', title: 'Error', description: 'Please enter a valid fee amount.' });
+        }
+    };
+
+    if (user?.role !== 'super_agent') return null;
+    if (!mounted) return <div>Loading...</div>;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Agent Fees</CardTitle>
+                <CardDescription>
+                    Set individual fees for each Agent (per 500 words). These override the global Agent fee.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                    <div className="flex gap-2">
+                        <Button onClick={runDebugCheck} variant="outline" size="sm">
+                            Debug Check
+                        </Button>
+                        {debugInfo && (
+                            <div className="text-xs bg-muted p-2 rounded flex-1">
+                                <div>Table exists: {debugInfo.tableStatus?.exists ? '✅' : '❌'}</div>
+                                <div>Records: {debugInfo.tableStatus?.count || 0}</div>
+                                <div>Fees loaded: {debugInfo.fees?.length || 0}</div>
+                                {debugInfo.feesError && <div className="text-red-600">Error: {debugInfo.feesError}</div>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                {agentFees.length === 0 ? (
+                    <div className="space-y-2">
+                        <p className="text-muted-foreground">No agents found or error loading fees.</p>
+                        <p className="text-sm text-orange-600">Try running the migration again or check the debug info above.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {agentFees.map((agent) => {
+                            const isEditing = editingFees[agent.id] !== undefined;
+                            const currentFee = isEditing ? editingFees[agent.id] : agent.fee_per_500.toString();
+                            
+                            return (
+                                <div key={agent.id} className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-center p-3 border rounded-lg">
+                                    <div className="sm:col-span-2">
+                                        <div className="font-medium">{agent.name}</div>
+                                        <div className="text-sm text-muted-foreground">{agent.email}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium">£</span>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={currentFee}
+                                            onChange={(e) => handleFeeChange(agent.id, e.target.value)}
+                                            className="w-24"
+                                            disabled={loading}
+                                        />
+                                        <span className="text-sm text-muted-foreground">per 500 words</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {isEditing ? (
+                                            <>
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => handleSaveFee(agent.id)}
+                                                    disabled={loading || !editingFees[agent.id] || editingFees[agent.id] === agent.fee_per_500.toString()}
+                                                >
+                                                    {loading ? 'Saving...' : 'Save'}
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setEditingFees(prev => ({ ...prev, [agent.id]: '' }))}
+                                                    disabled={loading}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </>
+                                        ) : (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => handleFeeChange(agent.id, agent.fee_per_500.toString())}
+                                                disabled={loading}
+                                            >
+                                                Edit
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}            
+            </CardContent>
+        </Card>
+    );
+}
+
 function NotificationTemplateManagerView() {
     const { user, toast } = useAppContext();
     const [templates, setTemplates] = useState<NotificationTemplates | null>(null);
@@ -620,13 +907,15 @@ export default function SettingsView() {
         <div className="p-4 space-y-4">
             <h2 className="text-2xl font-bold">Settings</h2>
             <Tabs defaultValue="pricing">
-                <TabsList className="grid w-full grid-cols-7">
+                <TabsList className="grid w-full grid-cols-9">
                     <TabsTrigger value="pricing"><DollarSign className="mr-2 h-4 w-4" />Pricing</TabsTrigger>
                     <TabsTrigger value="fees"><DollarSign className="mr-2 h-4 w-4" />Fees & Deadlines</TabsTrigger>
                     <TabsTrigger value="ref-codes"><Code className="mr-2 h-4 w-4" />Ref. Codes</TabsTrigger>
                     <TabsTrigger value="create-ref-code"><Code className="mr-2 h-4 w-4" />Create Ref. Code</TabsTrigger>
                     <TabsTrigger value="migration"><Database className="mr-2 h-4 w-4" />Migration</TabsTrigger>
                     <TabsTrigger value="super-worker-fees"><Users className="mr-2 h-4 w-4" />Super Worker Fees</TabsTrigger>
+                    <TabsTrigger value="agent-pricing"><DollarSign className="mr-2 h-4 w-4" />Agent Pricing</TabsTrigger>
+                    <TabsTrigger value="agent-fees"><Users className="mr-2 h-4 w-4" />Agent Fees</TabsTrigger>
                     <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4" />Notifications</TabsTrigger>
                 </TabsList>
                 <TabsContent value="pricing">
@@ -646,6 +935,12 @@ export default function SettingsView() {
                 </TabsContent>
                 <TabsContent value="super-worker-fees">
                     <SuperWorkerFeesManagerView />
+                </TabsContent>
+                <TabsContent value="agent-pricing">
+                    <AgentPricingConfigView />
+                </TabsContent>
+                <TabsContent value="agent-fees">
+                    <AgentFeesManagerView />
                 </TabsContent>
                 <TabsContent value="notifications">
                     <NotificationTemplateManagerView />

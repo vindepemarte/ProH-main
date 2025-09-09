@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, HomeworkChangeRequestData, SuperWorkerWithFee } from '@/lib/types';
+import type { User, Homework, ReferenceCode, AnalyticsData, ProjectNumber, PricingConfig, Notification, UserRole, SuperAgentDashboardStats, HomeworkChangeRequestData, SuperWorkerWithFee, AgentWithFee } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import { 
   fetchUsers, 
@@ -34,6 +34,12 @@ import {
   assignSuperWorkerToHomework,
   fetchSuperWorkersForAssignment,
   approveDraftFiles,
+  fetchAgentFees,
+  updateAgentFee,
+  runAgentFeesMigration,
+  getAgentPricingConfig,
+  saveAgentPricingConfig,
+  runAgentPricingMigration,
 } from '@/lib/actions';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -115,6 +121,16 @@ interface AppContextType {
   handleAssignSuperWorker: (homeworkId: string, workerId: string) => Promise<void>;
   fetchSuperWorkersForAssignment: () => Promise<void>;
 
+  agentFees: AgentWithFee[];
+  fetchAgentFees: () => Promise<void>;
+  handleUpdateAgentFee: (agentId: string, fee: number) => Promise<void>;
+  runAgentFeesMigration: () => Promise<{ success: boolean; message: string }>;
+
+  agentPricingConfig: { wordTiers: Record<string, number> } | null;
+  fetchAgentPricingConfig: (agentId: string) => Promise<void>;
+  handleSaveAgentPricingConfig: (agentId: string, config: { wordTiers: Record<string, number> }) => Promise<void>;
+  runAgentPricingMigration: () => Promise<{ success: boolean; message: string }>;
+
   showConfetti: boolean;
   setShowConfetti: (show: boolean) => void;
 }
@@ -150,6 +166,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Super Worker Management State
   const [superWorkerFees, setSuperWorkerFees] = useState<SuperWorkerWithFee[]>([]);
   const [superWorkersForAssignment, setSuperWorkersForAssignment] = useState<User[]>([]);
+  const [agentFees, setAgentFees] = useState<AgentWithFee[]>([]);
+  const [agentPricingConfig, setAgentPricingConfig] = useState<{ wordTiers: Record<string, number> } | null>(null);
 
 
   const getHomeworksForUser = useCallback(async () => {
@@ -491,6 +509,84 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [user, toast]);
   
+  const fetchAgentFeesHandler = useCallback(async () => {
+    if (!user) return;
+    try {
+      const fees = await fetchAgentFees();
+      setAgentFees(fees);
+    } catch (error: any) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: error.message || "Could not fetch agent fees." });
+    }
+  }, [user, toast]);
+
+  const handleUpdateAgentFee = async (agentId: string, fee: number) => {
+    try {
+      await updateAgentFee(agentId, fee);
+      await fetchAgentFeesHandler();
+      toast({ title: "Success", description: "Agent fee updated successfully." });
+    } catch (error: any) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: error.message || "Could not update agent fee." });
+    }
+  };
+
+  const runAgentFeesMigrationHandler = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const result = await runAgentFeesMigration();
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
+        await fetchAgentFeesHandler();
+      } else {
+        toast({ variant: 'destructive', title: "Error", description: result.message });
+      }
+      return result;
+    } catch (error: any) {
+      console.error(error);
+      const errorMessage = error.message || "Migration failed with unknown error";
+      toast({ variant: 'destructive', title: "Error", description: errorMessage });
+      return { success: false, message: errorMessage };
+    }
+  };
+
+  const fetchAgentPricingConfigHandler = async (agentId: string) => {
+    try {
+      const config = await getAgentPricingConfig(agentId);
+      setAgentPricingConfig(config);
+    } catch (error: any) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: error.message || "Could not fetch agent pricing config." });
+    }
+  };
+
+  const handleSaveAgentPricingConfig = async (agentId: string, config: { wordTiers: Record<string, number> }) => {
+    try {
+      await saveAgentPricingConfig(agentId, config);
+      setAgentPricingConfig(config);
+      toast({ title: "Success", description: "Agent pricing configuration saved successfully." });
+    } catch (error: any) {
+      console.error(error);
+      toast({ variant: 'destructive', title: "Error", description: error.message || "Could not save agent pricing config." });
+    }
+  };
+
+  const runAgentPricingMigrationHandler = async (): Promise<{ success: boolean; message: string }> => {
+    try {
+      const result = await runAgentPricingMigration();
+      if (result.success) {
+        toast({ title: "Success", description: result.message });
+      } else {
+        toast({ variant: 'destructive', title: "Error", description: result.message });
+      }
+      return result;
+    } catch (error: any) {
+      console.error(error);
+      const errorMessage = error.message || "Agent pricing migration failed with unknown error";
+      toast({ variant: 'destructive', title: "Error", description: errorMessage });
+      return { success: false, message: errorMessage };
+    }
+  };
+  
   const handleUpdateSuperWorkerFee = async (workerId: string, fee: number) => {
     try {
       await updateSuperWorkerFee(workerId, fee);
@@ -675,6 +771,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     handleUpdateSuperWorkerFee,
     handleAssignSuperWorker,
     fetchSuperWorkersForAssignment: fetchSuperWorkersForAssignmentHandler,
+
+    agentFees,
+    fetchAgentFees: fetchAgentFeesHandler,
+    handleUpdateAgentFee,
+    runAgentFeesMigration: runAgentFeesMigrationHandler,
+
+    agentPricingConfig,
+    fetchAgentPricingConfig: fetchAgentPricingConfigHandler,
+    handleSaveAgentPricingConfig,
+    runAgentPricingMigration: runAgentPricingMigrationHandler,
     showConfetti,
     setShowConfetti,
   };
